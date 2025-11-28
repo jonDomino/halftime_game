@@ -43,11 +43,11 @@ This is a comprehensive code review of the TFS (Time to First Shot) Kernel Dashb
 5. **Visual Indicators**
    - Red shading: Actual tempo slower than possession-level expected
    - Green shading: Actual tempo faster than possession-level expected
-   - Residual statistics chart (subplot below main plot):
-     - Overall average residual (bar chart)
+   - Residual statistics table (subplot below main plot):
+     - Overall average residual
      - Average residual by possession type (Rebound, Turnover, Made Shot)
-     - Percentage of possessions above expected (displayed in chart title)
-     - Color-coded bars (green=faster than expected, red=slower than expected)
+     - Percentage of possessions above expected
+     - Color-coded cells (green=faster than expected, pink=slower than expected)
 
 6. **Data Sources**
    - ESPN API for schedule and play-by-play data
@@ -317,7 +317,7 @@ Split into:
 Split into:
 - `_calculate_expected_tfs_trend()` - Expected TFS calculation
 - `_add_shading()` - Shading logic
-- `_build_residual_chart()` - Residual statistics chart (subplot)
+- `_build_residual_table()` - Residual statistics table (subplot)
 - `_calculate_residual_data()` - Residual calculation logic
 - `_add_legends()` - Legend creation
 

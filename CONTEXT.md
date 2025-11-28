@@ -10,11 +10,11 @@ This is a **Streamlit dashboard** for real-time monitoring of **Time to First Sh
 1. ✅ **Possession-level Expected TFS**: Implemented dynamic expected TFS calculation based on `poss_start_type` (rebound, turnover, oppo_made_shot) with different formulas for each type
 2. ✅ **Dual Expected TFS Lines**: Shows both game-level (flat dashed line) and possession-level (smooth trend line) expected TFS
 3. ✅ **Shading Logic**: Red/green shading compares actual kernel curve vs possession-level expected kernel (not game-level)
-4. ✅ **Residual Statistics Chart**: Added dedicated subplot below main tempo plot showing:
-   - Overall average residual (bar chart)
+4. ✅ **Residual Statistics Table**: Added dedicated data table below main tempo plot showing:
+   - Overall average residual
    - Average residual by possession type (Rebound, Turnover, Made Shot)
-   - Percentage of possessions above expected (displayed in chart title)
-   - Color-coded bars (green=faster than expected, red=slower than expected)
+   - Percentage of possessions above expected
+   - Color-coded cells (green=faster than expected, pink=slower than expected)
 5. ✅ **Git History Cleanup**: Removed credentials from git history using orphan branch approach
 6. ✅ **Timezone Fix**: Converted all game dates to PST at pipeline entry to fix filtering issues
 7. ✅ **Possession Start Legend**: Moved from individual plots to sidebar as single legend
@@ -57,10 +57,10 @@ This is a **Streamlit dashboard** for real-time monitoring of **Time to First Sh
   - Game-level expected TFS (dashed line)
   - Possession-level expected TFS (trend line)
   - Red/green shading (actual vs possession-level expected)
-  - Residual statistics chart (subplot below main plot)
+  - Residual statistics table (subplot below main plot)
     - Overall average residual
     - Average residual by possession type (Rebound, Turnover, Made Shot)
-    - Percentage above expected in title
+    - Percentage above expected
 
 ### UI Components
 - `app/ui/selectors.py` - Date, game, board selectors

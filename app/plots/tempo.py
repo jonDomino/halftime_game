@@ -364,9 +364,9 @@ def build_tempo_figure(
     # Create main legend (for lines, change points, etc.)
     ax.legend(loc="upper right", fontsize=style["fontsize_legend"])
     
-    # Add residual statistics chart below if we have residual data
+    # Add residual statistics table below if we have residual data
     if ax_residual is not None and residual_data:
-        # Prepare data for bar chart
+        # Prepare data for table
         type_labels_display = {
             "rebound": "Rebound",
             "turnover": "Turnover",
@@ -375,47 +375,60 @@ def build_tempo_figure(
             "other": "Other"
         }
         
-        # Create bar chart data
-        categories = ["Overall"]
-        values = [residual_data['avg_residual']]
-        colors_list = [get_color("primary")]
+        # Build table data
+        table_data = []
+        table_data.append(["Overall", f"{residual_data['avg_residual']:+.1f}s"])
         
-        # Add possession type bars
+        # Add possession type rows
         for poss_type in ["rebound", "turnover", "oppo_made_shot"]:
             if poss_type in residual_data['avg_by_type']:
-                categories.append(type_labels_display[poss_type])
-                values.append(residual_data['avg_by_type'][poss_type])
-                # Color based on sign: green for negative (faster), red for positive (slower)
-                if residual_data['avg_by_type'][poss_type] < 0:
-                    colors_list.append(get_color("success"))
-                else:
-                    colors_list.append(get_color("danger"))
+                table_data.append([type_labels_display[poss_type], 
+                                  f"{residual_data['avg_by_type'][poss_type]:+.1f}s"])
         
-        # Create bar positions
-        x_pos = np.arange(len(categories))
+        # Add percentage row
+        table_data.append(["% Above Expected", f"{residual_data['pct_above']:.1f}%"])
         
-        # Plot bars
-        bars = ax_residual.bar(x_pos, values, color=colors_list, alpha=0.7, edgecolor='black', linewidth=0.5)
+        # Create table
+        table = ax_residual.table(
+            cellText=table_data,
+            colLabels=["Metric", "Value"],
+            cellLoc='center',
+            loc='center',
+            bbox=[0, 0, 1, 1]
+        )
         
-        # Add value labels on bars
-        for i, (bar, val) in enumerate(zip(bars, values)):
-            height = bar.get_height()
-            ax_residual.text(bar.get_x() + bar.get_width()/2., height,
-                            f'{val:+.1f}s',
-                            ha='center', va='bottom' if height >= 0 else 'top',
-                            fontsize=8, fontweight='bold')
+        # Style the table
+        table.auto_set_font_size(False)
+        table.set_fontsize(9)
+        table.scale(1, 2)
         
-        # Add zero line
-        ax_residual.axhline(y=0, color='black', linestyle='-', linewidth=0.8)
+        # Style header row (row 0 in matplotlib table)
+        for j in range(2):
+            table[(0, j)].set_facecolor('#4472C4')
+            table[(0, j)].set_text_props(weight='bold', color='white')
         
-        # Set labels and title
-        ax_residual.set_xticks(x_pos)
-        ax_residual.set_xticklabels(categories, rotation=45, ha='right', fontsize=9)
-        ax_residual.set_ylabel('Avg Residual (s)', fontsize=9)
-        ax_residual.set_title(f'Residual Statistics | {residual_data["pct_above"]:.1f}% Above Expected', 
-                             fontsize=10, fontweight='bold')
-        ax_residual.grid(axis='y', alpha=0.3, linestyle='--')
-        ax_residual.set_xlabel("")  # No x-axis label for residual chart
+        # Color code data cells based on residual values
+        for i, row in enumerate(table_data):
+            row_idx = i + 1  # Data rows start at index 1 (after header)
+            if i < len(table_data) - 1:  # Data rows (not percentage row)
+                # Color based on residual value
+                try:
+                    val_str = row[1].replace('s', '')
+                    val = float(val_str)
+                    if val < 0:
+                        table[(row_idx, 1)].set_facecolor('#90EE90')  # Light green for faster
+                    else:
+                        table[(row_idx, 1)].set_facecolor('#FFB6C1')  # Light pink for slower
+                except:
+                    pass
+                table[(row_idx, 0)].set_facecolor('#F0F0F0')  # Light gray for labels
+            else:  # Percentage row (last row)
+                table[(row_idx, 0)].set_facecolor('#F0F0F0')
+                table[(row_idx, 1)].set_facecolor('#E6E6FA')  # Lavender for percentage
+        
+        # Remove axes for table
+        ax_residual.axis('off')
+        ax_residual.set_title(f'Residual Statistics', fontsize=10, fontweight='bold', pad=10)
         
         # Set x-axis label on main plot
         ax.set_xlabel("Possession", fontsize=10)

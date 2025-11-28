@@ -87,6 +87,8 @@ def build_tempo_figure(
             # Calculate residuals for each possession
             residuals = []
             residuals_by_type = {"rebound": [], "turnover": [], "oppo_made_shot": [], "period_start": [], "other": []}
+            above_exp_count_by_type = {"rebound": 0, "turnover": 0, "oppo_made_shot": 0, "period_start": 0, "other": 0}
+            total_count_by_type = {"rebound": 0, "turnover": 0, "oppo_made_shot": 0, "period_start": 0, "other": 0}
             above_exp_count = 0
             below_exp_count = 0
             
@@ -105,10 +107,16 @@ def build_tempo_figure(
                 # Track by type
                 if poss_type in residuals_by_type:
                     residuals_by_type[poss_type].append(residual)
+                    total_count_by_type[poss_type] += 1
+                    if residual > 0:
+                        above_exp_count_by_type[poss_type] += 1
                 else:
                     residuals_by_type["other"].append(residual)
+                    total_count_by_type["other"] += 1
+                    if residual > 0:
+                        above_exp_count_by_type["other"] += 1
                 
-                # Count above/below
+                # Count above/below (overall)
                 if residual > 0:
                     above_exp_count += 1
                 else:
@@ -119,16 +127,19 @@ def build_tempo_figure(
             total_poss = len(residuals)
             pct_above = (above_exp_count / total_poss * 100) if total_poss > 0 else 0.0
             
-            # Calculate average residual by type
+            # Calculate average residual and % above by type
             avg_by_type = {}
+            pct_above_by_type = {}
             for poss_type, res_list in residuals_by_type.items():
                 if res_list:
                     avg_by_type[poss_type] = np.mean(res_list)
+                    pct_above_by_type[poss_type] = (above_exp_count_by_type[poss_type] / total_count_by_type[poss_type] * 100) if total_count_by_type[poss_type] > 0 else 0.0
             
             residual_data = {
                 "avg_residual": avg_residual,
                 "avg_by_type": avg_by_type,
                 "pct_above": pct_above,
+                "pct_above_by_type": pct_above_by_type,
                 "total_poss": total_poss
             }
         except Exception as e:
@@ -366,32 +377,38 @@ def build_tempo_figure(
     
     # Add residual statistics table below if we have residual data
     if ax_residual is not None and residual_data:
-        # Prepare data for table
+        # Prepare data for table with 3 columns: Metric, Residual, % Above
         type_labels_display = {
-            "rebound": "Rebound",
-            "turnover": "Turnover",
             "oppo_made_shot": "Made Shot",
-            "period_start": "Period Start",
-            "other": "Other"
+            "rebound": "Rebound",
+            "turnover": "Turnover"
         }
         
-        # Build table data
+        # Build table data: rows are Overall, Made Shot, Rebound, Turnover
         table_data = []
-        table_data.append(["Overall", f"{residual_data['avg_residual']:+.1f}s"])
         
-        # Add possession type rows
-        for poss_type in ["rebound", "turnover", "oppo_made_shot"]:
+        # Overall row
+        table_data.append([
+            "Overall",
+            f"{residual_data['avg_residual']:+.1f}s",
+            f"{residual_data['pct_above']:.1f}%"
+        ])
+        
+        # Add possession type rows (Made Shot, Rebound, Turnover)
+        for poss_type in ["oppo_made_shot", "rebound", "turnover"]:
             if poss_type in residual_data['avg_by_type']:
-                table_data.append([type_labels_display[poss_type], 
-                                  f"{residual_data['avg_by_type'][poss_type]:+.1f}s"])
+                avg_res = residual_data['avg_by_type'][poss_type]
+                pct_above = residual_data['pct_above_by_type'].get(poss_type, 0.0)
+                table_data.append([
+                    type_labels_display[poss_type],
+                    f"{avg_res:+.1f}s",
+                    f"{pct_above:.1f}%"
+                ])
         
-        # Add percentage row
-        table_data.append(["% Above Expected", f"{residual_data['pct_above']:.1f}%"])
-        
-        # Create table
+        # Create table with 3 columns
         table = ax_residual.table(
             cellText=table_data,
-            colLabels=["Metric", "Value"],
+            colLabels=["Metric", "Residual", "% Above"],
             cellLoc='center',
             loc='center',
             bbox=[0, 0, 1, 1]
@@ -403,28 +420,30 @@ def build_tempo_figure(
         table.scale(1, 2)
         
         # Style header row (row 0 in matplotlib table)
-        for j in range(2):
+        for j in range(3):
             table[(0, j)].set_facecolor('#4472C4')
             table[(0, j)].set_text_props(weight='bold', color='white')
         
-        # Color code data cells based on residual values
+        # Color code data cells
         for i, row in enumerate(table_data):
             row_idx = i + 1  # Data rows start at index 1 (after header)
-            if i < len(table_data) - 1:  # Data rows (not percentage row)
-                # Color based on residual value
-                try:
-                    val_str = row[1].replace('s', '')
-                    val = float(val_str)
-                    if val < 0:
-                        table[(row_idx, 1)].set_facecolor('#90EE90')  # Light green for faster
-                    else:
-                        table[(row_idx, 1)].set_facecolor('#FFB6C1')  # Light pink for slower
-                except:
-                    pass
-                table[(row_idx, 0)].set_facecolor('#F0F0F0')  # Light gray for labels
-            else:  # Percentage row (last row)
-                table[(row_idx, 0)].set_facecolor('#F0F0F0')
-                table[(row_idx, 1)].set_facecolor('#E6E6FA')  # Lavender for percentage
+            
+            # Color metric column (light gray)
+            table[(row_idx, 0)].set_facecolor('#F0F0F0')
+            
+            # Color residual column based on value (green=faster, pink=slower)
+            try:
+                val_str = row[1].replace('s', '')
+                val = float(val_str)
+                if val < 0:
+                    table[(row_idx, 1)].set_facecolor('#90EE90')  # Light green for faster
+                else:
+                    table[(row_idx, 1)].set_facecolor('#FFB6C1')  # Light pink for slower
+            except:
+                table[(row_idx, 1)].set_facecolor('#FFFFFF')  # White if can't parse
+            
+            # Color % Above column (light blue)
+            table[(row_idx, 2)].set_facecolor('#E6E6FA')  # Lavender
         
         # Remove axes for table
         ax_residual.axis('off')

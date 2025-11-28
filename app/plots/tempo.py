@@ -387,7 +387,7 @@ def build_tempo_figure(
     
     # Add residual statistics table below if we have residual data
     if ax_residual is not None and residual_data:
-        # Prepare data for table with 5 columns: Metric, Count, Mean Res, Median Res, % Above
+        # Prepare data for table with 5 columns: Metric, Count, Mean Res, Median Res, % Faster
         type_labels_display = {
             "oppo_made_shot": "Made Shot",
             "rebound": "Rebound",
@@ -424,7 +424,7 @@ def build_tempo_figure(
         # Create table with 5 columns
         table = ax_residual.table(
             cellText=table_data,
-            colLabels=["Metric", "Count", "Mean Res", "Median Res", "% Above"],
+            colLabels=["Metric", "Count", "Mean Res", "Median Res", "% Faster"],
             cellLoc='center',
             loc='center',
             bbox=[0, 0, 1, 1]
@@ -472,14 +472,14 @@ def build_tempo_figure(
             except:
                 table[(row_idx, 3)].set_facecolor('#FFFFFF')  # White if can't parse
             
-            # Column 4: % Above - <50%=red, >=50%=green
+            # Column 4: % Faster - >50%=red, <=50%=green
             try:
                 pct_str = row[4].replace('%', '')
                 pct_val = float(pct_str)
-                if pct_val < 50:
-                    table[(row_idx, 4)].set_facecolor('#FFB6C1')  # Light pink/red for <50%
+                if pct_val > 50:
+                    table[(row_idx, 4)].set_facecolor('#FFB6C1')  # Light pink/red for >50%
                 else:
-                    table[(row_idx, 4)].set_facecolor('#90EE90')  # Light green for >=50%
+                    table[(row_idx, 4)].set_facecolor('#90EE90')  # Light green for <=50%
             except:
                 table[(row_idx, 4)].set_facecolor('#FFFFFF')  # White if can't parse
         

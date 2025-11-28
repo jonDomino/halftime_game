@@ -372,18 +372,19 @@ def build_tempo_figure(
     ax.set_xlabel("Possession")
     ax.set_ylabel("Time to First Shot (seconds)")
     
-    # Add test text field
-    ax.text(
-        0.02, 0.02, "test",
-        transform=ax.transAxes,
-        fontsize=12,
-        fontweight='bold',
-        color='red',
-        bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.8)
-    )
-    
     # Create main legend (for lines, change points, etc.)
     ax.legend(loc="upper right", fontsize=style["fontsize_legend"])
+    
+    # Add test text field - VERY VISIBLE IN UPPER LEFT
+    ax.text(
+        0.02, 0.98, "TEST DEPLOYMENT",
+        transform=ax.transAxes,
+        fontsize=16,
+        fontweight='bold',
+        color='red',
+        bbox=dict(boxstyle='round', facecolor='yellow', alpha=1.0, edgecolor='red', linewidth=3),
+        zorder=1000
+    )
     
     # Add residual statistics table below if we have residual data
     if ax_residual is not None and residual_data:

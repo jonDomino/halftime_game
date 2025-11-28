@@ -377,7 +377,7 @@ def build_tempo_figure(
     
     # Add residual statistics table below if we have residual data
     if ax_residual is not None and residual_data:
-        # Prepare data for table with 3 columns: Metric, Residual, % Above
+        # Prepare data for table with 3 columns: Metric, Value, % Above
         type_labels_display = {
             "oppo_made_shot": "Made Shot",
             "rebound": "Rebound",
@@ -408,7 +408,7 @@ def build_tempo_figure(
         # Create table with 3 columns
         table = ax_residual.table(
             cellText=table_data,
-            colLabels=["Metric", "Residual", "% Above"],
+            colLabels=["Metric", "Value", "% Above"],
             cellLoc='center',
             loc='center',
             bbox=[0, 0, 1, 1]

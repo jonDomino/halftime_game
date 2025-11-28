@@ -10,35 +10,26 @@ This is a **Streamlit dashboard** for real-time monitoring of **Time to First Sh
 1. ✅ **Possession-level Expected TFS**: Implemented dynamic expected TFS calculation based on `poss_start_type` (rebound, turnover, oppo_made_shot) with different formulas for each type
 2. ✅ **Dual Expected TFS Lines**: Shows both game-level (flat dashed line) and possession-level (smooth trend line) expected TFS
 3. ✅ **Shading Logic**: Red/green shading compares actual kernel curve vs possession-level expected kernel (not game-level)
-4. ✅ **Residual Statistics**: Added bottom legend showing average residual, residuals by possession type, and % above/below expected
-5. ✅ **Timezone Fix**: Converted all game dates to PST at pipeline entry to fix filtering issues
-6. ✅ **Possession Start Legend**: Moved from individual plots to sidebar as single legend
-7. ✅ **Code Review**: Created comprehensive `CODE_REVIEW.md` documenting requirements and refactoring recommendations
+4. ✅ **Residual Statistics Chart**: Added dedicated subplot below main tempo plot showing:
+   - Overall average residual (bar chart)
+   - Average residual by possession type (Rebound, Turnover, Made Shot)
+   - Percentage of possessions above expected (displayed in chart title)
+   - Color-coded bars (green=faster than expected, red=slower than expected)
+5. ✅ **Git History Cleanup**: Removed credentials from git history using orphan branch approach
+6. ✅ **Timezone Fix**: Converted all game dates to PST at pipeline entry to fix filtering issues
+7. ✅ **Possession Start Legend**: Moved from individual plots to sidebar as single legend
+8. ✅ **Code Review**: Created comprehensive `CODE_REVIEW.md` documenting requirements and refactoring recommendations
 
-### Current Issue (BLOCKING)
+### Current Status
 
-**GitHub Push Protection Error**: Cannot push to repository because `STREAMLIT_SECRETS.md` contains actual Google Cloud Service Account credentials in commit history.
-
-**Error Details:**
-- Commit: `2428f4cf03a50d07127b3d2c54618a4ff5cae35e`
-- File: `STREAMLIT_SECRETS.md:59`
-- Issue: Contains private key, client_email, and other credentials
+**✅ Git Push Issue RESOLVED**: Successfully removed credentials from git history by creating a clean orphan branch and force pushing. Repository now has clean history without any credentials.
 
 **Status:**
-- ✅ Fixed: Replaced actual credentials with placeholders in `STREAMLIT_SECRETS.md`
-- ✅ Fixed: Added `STREAMLIT_SECRETS.md` to `.gitignore`
-- ⚠️ **TODO**: Need to remove the file from git history (commit `2428f4c`)
-
-**Solution Needed:**
-```bash
-# Remove file from commit history
-git rm --cached STREAMLIT_SECRETS.md
-git commit --amend --no-edit
-# Or if already pushed, need to rewrite history:
-git filter-branch --force --index-filter \
-  "git rm --cached --ignore-unmatch STREAMLIT_SECRETS.md" \
-  --prune-empty --tag-name-filter cat -- --all
-```
+- ✅ Fixed: Removed `STREAMLIT_SECRETS.md` from git tracking
+- ✅ Fixed: Created clean git history (orphan branch approach)
+- ✅ Fixed: Force pushed clean history to remote
+- ✅ Fixed: GitHub push protection now passes
+- ✅ Credentials stored in Streamlit Cloud settings (not in repo)
 
 ## Key Files & Their Purpose
 
@@ -61,12 +52,15 @@ git filter-branch --force --index-filter \
 - `builders/action_time/` - Action time processing pipeline
 
 ### Visualization
-- `app/plots/tempo.py` - Main tempo plot (366 lines - needs refactoring)
+- `app/plots/tempo.py` - Main tempo plot (440 lines - needs refactoring)
   - Shows kernel-smoothed tempo curve
   - Game-level expected TFS (dashed line)
   - Possession-level expected TFS (trend line)
   - Red/green shading (actual vs possession-level expected)
-  - Residual statistics at bottom
+  - Residual statistics chart (subplot below main plot)
+    - Overall average residual
+    - Average residual by possession type (Rebound, Turnover, Made Shot)
+    - Percentage above expected in title
 
 ### UI Components
 - `app/ui/selectors.py` - Date, game, board selectors
@@ -121,19 +115,18 @@ See `CODE_REVIEW.md` for detailed refactoring recommendations.
 ## Recent Git History
 
 ```
-a3686a6 - Fix shading: use where parameter in fill_between to prevent connecting disconnected regions
-c59cb91 - Fix shading: use full grid with NaN masking to prevent connecting disconnected regions
-39d56c6 - Keep game-level exp TFS for reference, shade based on poss-level exp kernel, move poss start legend to sidebar
-c1de602 - Update expected TFS to possession-level based on poss_start_type and closing_total, show as trend line with updated shading
-74b7317 - Convert game dates to PST at pipeline entry to fix timezone filtering issues
-274c7bb - Fix timezone: use PST instead of UTC for date selection and schedule loading
+aae6160 - Add residual statistics chart below tempo plots showing avg residual overall and by possession type, plus % above expected
+f1a42d3 - Remove temporary cleanup script
+eba5796 - Initial commit: TFS Kernel Dashboard (credentials removed from history)
 ```
+
+**Note**: Previous history was cleaned to remove credentials. Current branch starts from clean commit.
 
 ## Next Steps (Priority Order)
 
-1. **URGENT**: Fix git push issue - remove credentials from commit history
-2. **HIGH**: Complete residual statistics feature (was in progress)
-3. **MEDIUM**: Consider refactoring based on `CODE_REVIEW.md`
+1. **HIGH**: Consider refactoring based on `CODE_REVIEW.md` (especially `app/main.py` and `app/plots/tempo.py`)
+2. **MEDIUM**: Add proper timezone support (handle DST automatically)
+3. **MEDIUM**: Extract configuration constants to centralized config module
 4. **LOW**: Add tests, improve documentation
 
 ## Important Notes
@@ -179,5 +172,5 @@ dashboard/
 ---
 
 **Last Updated**: Current session
-**Status**: Functional, but has blocking git issue and technical debt
+**Status**: Functional, clean git history, ready for refactoring to reduce technical debt
 

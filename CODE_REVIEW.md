@@ -43,7 +43,11 @@ This is a comprehensive code review of the TFS (Time to First Shot) Kernel Dashb
 5. **Visual Indicators**
    - Red shading: Actual tempo slower than possession-level expected
    - Green shading: Actual tempo faster than possession-level expected
-   - Residual statistics at bottom of plots (avg residual, by type, % above/below)
+   - Residual statistics chart (subplot below main plot):
+     - Overall average residual (bar chart)
+     - Average residual by possession type (Rebound, Turnover, Made Shot)
+     - Percentage of possessions above expected (displayed in chart title)
+     - Color-coded bars (green=faster than expected, red=slower than expected)
 
 6. **Data Sources**
    - ESPN API for schedule and play-by-play data
@@ -151,8 +155,9 @@ dashboard/
    - Hard to test and maintain
 
 2. **Repeated Code in `app/plots/tempo.py`**
-   - Expected TFS calculation duplicated (lines 147-160 and 270-286)
-   - Residual calculation logic is verbose and could be extracted
+   - Expected TFS calculation logic could be extracted to service
+   - Residual calculation logic is verbose and could be extracted to service
+   - Subplot creation logic could be separated from main plot logic
 
 3. **Session State Management Scattered**
    - `completed_games`, `not_started_last_check`, `plot_containers`, `error_log` initialized in multiple places
@@ -183,7 +188,7 @@ dashboard/
    - Should use vectorized operations or `.iterrows()` / `.itertuples()`
 
 9. **Function Complexity**
-   - `build_tempo_figure()`: 366 lines, does too much
+   - `build_tempo_figure()`: 440 lines, does too much (includes residual chart subplot)
    - `_render_content()`: 148 lines, complex nested logic
    - `get_game_statuses()`: 84 lines, handles multiple concerns
 
@@ -312,7 +317,8 @@ Split into:
 Split into:
 - `_calculate_expected_tfs_trend()` - Expected TFS calculation
 - `_add_shading()` - Shading logic
-- `_add_residual_stats()` - Residual statistics
+- `_build_residual_chart()` - Residual statistics chart (subplot)
+- `_calculate_residual_data()` - Residual calculation logic
 - `_add_legends()` - Legend creation
 
 ### 4.2 Medium Priority Refactors
@@ -430,7 +436,9 @@ logger.error(f"Error: {e}")
 
 ### Code Quality Metrics
 - **Cyclomatic Complexity**: Reduce average function complexity from ~15 to <10
-- **Lines per File**: Reduce `main.py` from 502 to <200 lines
+- **Lines per File**: 
+  - Reduce `main.py` from 502 to <200 lines
+  - Reduce `app/plots/tempo.py` from 440 to <250 lines (split into smaller functions)
 - **Code Duplication**: Reduce from ~15% to <5%
 - **Test Coverage**: Increase from 0% to >60%
 
@@ -496,7 +504,7 @@ The following files are **obsolete** and should be removed from the repository:
 ### Files That Should Be Ignored (Already in .gitignore)
 - `meatloaf.json` - Credentials file (correctly excluded)
 - `streamlit_secrets.toml` - Local secrets (correctly excluded)
-- `STREAMLIT_SECRETS.md` - Should be excluded (contains template, but was accidentally committed with real credentials)
+- `STREAMLIT_SECRETS.md` - ✅ **RESOLVED**: Removed from git history via orphan branch approach
 
 ### Recommended Cleanup Actions
 
@@ -507,9 +515,6 @@ git rm get_sched.py get_pbp.py
 # Review and potentially remove
 # DEPENDENCIES_ADDED.md
 # PASTE_INTO_STREAMLIT_SECRETS.toml
-
-# Ensure STREAMLIT_SECRETS.md is in .gitignore (already done)
-# Remove from git history if it contains credentials
 ```
 
 ### Current Import Structure (Correct)

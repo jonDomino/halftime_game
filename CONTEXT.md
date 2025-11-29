@@ -7,15 +7,24 @@ This is a **Streamlit dashboard** for real-time monitoring of **Time to First Sh
 ## Current State (Latest Session)
 
 ### Recent Work Completed
+
+#### Latest Features (Most Recent)
+1. ✅ **Rotation Numbers Display**: Added away team rotation numbers to plots (displayed in top-left margin, dark gray text)
+2. ✅ **Rotation-Based Sorting**: Games sorted by rotation number descending (higher rotation numbers appear first)
+3. ✅ **Default Tab Selection**: Dashboard automatically opens to highest priority available tab:
+   - Priority order: Halftime > First Half > Early 1H > Second Half > Complete > alphabetical
+4. ✅ **Residuals Table Update**: Renamed "% Faster" column to "% Slower" to match shading logic
+
+#### Previous Improvements
 1. ✅ **Possession-level Expected TFS**: Implemented dynamic expected TFS calculation based on `poss_start_type` (rebound, turnover, oppo_made_shot) with different formulas for each type
 2. ✅ **Dual Expected TFS Lines**: Shows both game-level (flat dashed line) and possession-level (smooth trend line) expected TFS
 3. ✅ **Shading Logic**: Red/green shading compares actual kernel curve vs possession-level expected kernel (not game-level)
 4. ✅ **Enhanced Residual Statistics Table**: Comprehensive data table below main tempo plot with:
-   - Columns: Metric, Count, Mean Res, Median Res, % Above
+   - Columns: Metric, Count, Mean Res, Median Res, % Slower
    - Rows: Overall, Made Shot, Rebound, Turnover
    - Color-coded cells:
      - Mean Res & Median Res: Positive (red) = slower than expected, Negative (green) = faster
-     - % Above: <50% (red), >=50% (green)
+     - % Slower: >50% (red), <=50% (green)
 5. ✅ **File Cleanup**: Removed duplicate files, obsolete documentation, and git debugging files
 6. ✅ **Git History Cleanup**: Removed credentials from git history using orphan branch approach
 7. ✅ **Timezone Fix**: Converted all game dates to PST at pipeline entry to fix filtering issues
@@ -40,7 +49,7 @@ This is a **Streamlit dashboard** for real-time monitoring of **Time to First Sh
   - `schedule_loader.py` - Loads schedule from ESPN
   - `pbp_loader.py` - Loads play-by-play data (cached)
   - `status.py` - Classifies game status from PBP
-  - `bigquery_loader.py` - Fetches closing totals, calculates expected TFS
+  - `bigquery_loader.py` - Fetches closing totals, rotation numbers, board info, calculates expected TFS
   - `efg.py` - Calculates effective field goal percentage
   - `get_sched.py` - ESPN API wrapper for schedule
   - `get_pbp.py` - ESPN API wrapper for PBP
@@ -52,16 +61,17 @@ This is a **Streamlit dashboard** for real-time monitoring of **Time to First Sh
 - `builders/action_time/` - Action time processing pipeline
 
 ### Visualization
-- `app/plots/tempo.py` - Main tempo plot (505 lines - needs refactoring)
+- `app/plots/tempo.py` - Main tempo plot (526 lines - needs refactoring)
   - Shows kernel-smoothed tempo curve
   - Game-level expected TFS (dashed line)
   - Possession-level expected TFS (trend line)
   - Red/green shading (actual vs possession-level expected)
+  - Rotation number display (top-left margin, dark gray text)
   - Enhanced residual statistics table (subplot below main plot):
-    - Columns: Metric, Count, Mean Res, Median Res, % Above
+    - Columns: Metric, Count, Mean Res, Median Res, % Slower
     - Rows: Overall, Made Shot, Rebound, Turnover
     - Color-coded: Positive residuals (red), Negative residuals (green)
-    - % Above: <50% (red), >=50% (green)
+    - % Slower: >50% (red), <=50% (green)
 
 ### UI Components
 - `app/ui/selectors.py` - Date, game, board selectors
@@ -116,11 +126,14 @@ See `CODE_REVIEW.md` for detailed refactoring recommendations.
 ## Recent Git History
 
 ```
+713e9bf - Make rotation number text much darker
+d942eef - Darken rotation number text to 75% black, 25% gray
+c49103b - Add rotation numbers to plots: display in top-left margin and sort by rotation desc
+538b351 - Rename % Faster column to % Slower
+151eca5 - Rename % Above column to % Faster and flip shading logic: >50%=red, <=50%=green
+e1029c0 - Update CODE_REVIEW.md and CONTEXT.md: reflect current state
 820a7c3 - Enhance residuals table: add Count and Median Res columns, rename Residuals to Mean Res, update color shading
 d0a6e90 - Remove test deployment text from plots
-5bd5183 - Remove obsolete files: duplicates, credentials, git debugging files
-29fda5e - Update residual statistics table: 3 columns (Metric, Residual, % Above)
-f68d509 - Replace residual statistics bar chart with numerical data table
 ```
 
 **Note**: Repository has clean history. Previous credentials have been removed.

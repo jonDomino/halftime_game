@@ -31,6 +31,8 @@ This is a comprehensive code review of the TFS (Time to First Shot) Kernel Dashb
    - Filter by game status (tabs for each status)
    - Filter by board (Main/Extra) based on BigQuery data
    - Only show games with closing totals when board filter is active
+   - Default tab selection: Dashboard opens to highest priority available tab
+     - Priority order: Halftime > First Half > Early 1H > Second Half > Complete > alphabetical
 
 4. **Expected TFS Calculation**
    - Game-level: `27.65 - 0.08 * closing_total` (reference line)
@@ -44,15 +46,21 @@ This is a comprehensive code review of the TFS (Time to First Shot) Kernel Dashb
    - Red shading: Actual tempo slower than possession-level expected
    - Green shading: Actual tempo faster than possession-level expected
    - Residual statistics table (subplot below main plot):
-     - Columns: Metric, Count, Mean Res, Median Res, % Above
+     - Columns: Metric, Count, Mean Res, Median Res, % Slower
      - Rows: Overall, Made Shot, Rebound, Turnover
      - Color-coded cells:
        - Mean Res & Median Res: Positive (red) = slower than expected, Negative (green) = faster than expected
-       - % Above: <50% (red), >=50% (green)
+       - % Slower: >50% (red), <=50% (green)
+   - Rotation numbers: Displayed in top-left margin of each plot (dark gray text)
+   - Games sorted by rotation number descending (higher rotation numbers first)
 
-6. **Data Sources**
+6. **Tab Selection**
+   - Default tab priority: Halftime > First Half > Early 1H > Second Half > Complete > alphabetical
+   - Dashboard automatically opens to highest priority available tab
+
+7. **Data Sources**
    - ESPN API for schedule and play-by-play data
-   - BigQuery for closing totals and board information
+   - BigQuery for closing totals, board information, and rotation numbers
    - Timezone: All dates/times converted to PST at pipeline entry
 
 ### 1.2 Non-Functional Requirements
@@ -477,7 +485,15 @@ The refactoring can be done incrementally without disrupting current functionali
 
 ## 9. Recent Improvements
 
-### Completed Cleanup (2025)
+### Recent Work Completed (2025)
+
+#### Latest Features (Most Recent)
+- ✅ **Rotation Numbers Display**: Added away team rotation numbers to plots (top-left margin, dark gray text)
+- ✅ **Rotation-Based Sorting**: Games sorted by rotation number descending (higher numbers first)
+- ✅ **Default Tab Selection**: Dashboard defaults to highest priority available tab (Halftime > First Half > Early 1H > Second Half > Complete > alphabetical)
+- ✅ **Residuals Table Enhancement**: Renamed "% Faster" column to "% Slower" to match shading logic
+
+#### Previous Improvements
 - ✅ Removed duplicate root-level files (`get_sched.py`, `get_pbp.py`)
 - ✅ Removed obsolete documentation files (`DEPENDENCIES_ADDED.md`, `PASTE_INTO_STREAMLIT_SECRETS.toml`)
 - ✅ Removed credentials from git history

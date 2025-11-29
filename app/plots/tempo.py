@@ -513,8 +513,7 @@ def build_tempo_figure(
             0.02, 0.98,  # Top-left corner in figure coordinates
             f"Roto: {rotation_number}",
             fontsize=9,
-            color='gray',
-            alpha=0.5,  # Faint
+            color='#333333',  # 75% black, 25% gray (dark gray)
             horizontalalignment='left',
             verticalalignment='top',
             transform=fig.transFigure  # Use figure coordinates

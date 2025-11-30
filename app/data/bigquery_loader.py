@@ -219,10 +219,10 @@ def get_closing_totals(game_ids: list) -> Dict[str, Tuple[float, str, Optional[i
 def calculate_expected_tfs(closing_total: float, poss_start_type: Optional[str] = None) -> float:
     """Calculate expected TFS from closing total and possession start type.
     
-    If poss_start_type is provided, uses possession-specific formulas:
-    - OPPO_MADE_SHOT: 36.4397 + -0.1025 * closing_total
-    - REBOUND: 24.2977 + -0.0692 * closing_total
-    - TURNOVER: 23.9754 + -0.0619 * closing_total
+    If poss_start_type is provided, uses possession-specific formulas (updated with cleaned TFS data):
+    - OPPO_MADE_SHOT: 34.4101 + -0.0978 * closing_total
+    - REBOUND: 23.2104 + -0.0703 * closing_total
+    - TURNOVER: 23.4546 + -0.0690 * closing_total
     
     Otherwise, uses the old game-level formula (for backward compatibility):
     - exp_tfs = 27.65 - 0.08 * closing_total
@@ -242,17 +242,17 @@ def calculate_expected_tfs(closing_total: float, poss_start_type: Optional[str] 
         poss_start_type = str(poss_start_type).lower()
         
         if poss_start_type == "oppo_made_shot":
-            return 36.4397 + (-0.1025 * closing_total)
+            return 34.4101 + (-0.0978 * closing_total)
         elif poss_start_type == "rebound":
-            return 24.2977 + (-0.0692 * closing_total)
+            return 23.2104 + (-0.0703 * closing_total)
         elif poss_start_type == "turnover":
-            return 23.9754 + (-0.0619 * closing_total)
+            return 23.4546 + (-0.0690 * closing_total)
         # For period_start or other types, use rebound formula as default
         elif poss_start_type == "period_start":
-            return 24.2977 + (-0.0692 * closing_total)
+            return 23.2104 + (-0.0703 * closing_total)
         else:
             # Unknown type, use rebound as default
-            return 24.2977 + (-0.0692 * closing_total)
+            return 23.2104 + (-0.0703 * closing_total)
     
     # Fallback to old game-level formula if no poss_start_type
     return 27.65 - 0.08 * closing_total

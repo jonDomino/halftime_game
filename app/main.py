@@ -427,7 +427,10 @@ def _render_content():
             closing_totals_raw = get_closing_totals(game_ids)
         except Exception as e:
             # Fail gracefully if BigQuery fails
-            pass
+            import traceback
+            print(f"ERROR: get_closing_totals failed: {e}")
+            print(traceback.format_exc())
+            closing_totals_raw = {}
     
     # Filter by board and build closing_totals dict (just closing_total values) and rotation_numbers dict
     closing_totals = {}

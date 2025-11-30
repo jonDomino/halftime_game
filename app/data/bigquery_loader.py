@@ -8,6 +8,12 @@ from google.cloud import bigquery
 from typing import Dict, Optional, Tuple
 from app.config import config
 
+try:
+    from streamlit.errors import StreamlitSecretNotFoundError
+except ImportError:
+    # Fallback for older Streamlit versions
+    StreamlitSecretNotFoundError = Exception
+
 
 def should_run_query() -> bool:
     """Determine if we should run the BigQuery query.
@@ -47,26 +53,37 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
     client = None
     
     # Method 1: Check Streamlit secrets (for Streamlit Cloud)
-    try:
-        if hasattr(st, 'secrets') and 'bq_credentials' in st.secrets:
-            # Create temporary JSON file from secrets
-            import tempfile
-            import json as json_lib
-            
-            creds_dict = dict(st.secrets.bq_credentials)
-            # Handle JSON string if stored that way
-            if 'json_content' in creds_dict:
-                creds_dict = json_lib.loads(creds_dict['json_content'])
-            
-            # Write to temp file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                json_lib.dump(creds_dict, f)
-                creds_path = f.name
-            
-            client = bigquery.Client.from_service_account_json(creds_path)
-        else:
-            raise AttributeError("No Streamlit secrets")
-    except (AttributeError, KeyError):
+    if hasattr(st, 'secrets'):
+        try:
+            # Try to access secrets - this will raise StreamlitSecretNotFoundError if no secrets file exists
+            if 'bq_credentials' in st.secrets:
+                # Create temporary JSON file from secrets
+                import tempfile
+                import json as json_lib
+                
+                creds_dict = dict(st.secrets.bq_credentials)
+                # Handle JSON string if stored that way
+                if 'json_content' in creds_dict:
+                    creds_dict = json_lib.loads(creds_dict['json_content'])
+                
+                # Write to temp file
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                    json_lib.dump(creds_dict, f)
+                    creds_path = f.name
+                
+                client = bigquery.Client.from_service_account_json(creds_path)
+        except StreamlitSecretNotFoundError:
+            # No secrets.toml file exists locally - fall through to next method
+            pass
+        except (KeyError, AttributeError):
+            # bq_credentials not in secrets - fall through to next method
+            pass
+        except Exception:
+            # Other errors accessing secrets - fall through to next method
+            pass
+    
+    # Method 2: Check environment variable or default location (if Method 1 didn't work)
+    if client is None:
         # Method 2: Check environment variable
         env_creds_path = os.getenv("BIGQUERY_CREDENTIALS_PATH", None)
         if env_creds_path and os.path.exists(env_creds_path):
@@ -86,7 +103,15 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
                 # Try using Application Default Credentials (if gcloud is configured)
                 client = bigquery.Client()
         except Exception as e:
+            # Log credential loading error for debugging
+            import traceback
+            print(f"ERROR: Failed to load BigQuery credentials: {e}")
+            print(traceback.format_exc())
             return {}
+    
+    if client is None:
+        print("ERROR: BigQuery client is None - credentials not loaded")
+        return {}
     
     try:
         
@@ -157,6 +182,10 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
         return closing_totals
         
     except Exception as e:
+        # Log query error for debugging
+        import traceback
+        print(f"ERROR: BigQuery query failed: {e}")
+        print(traceback.format_exc())
         # Return empty dict on error (fail gracefully)
         return {}
 

@@ -443,6 +443,80 @@ def build_tempo_figure(
             label=f"Expected TFS ({expected_tfs:.1f}s)"
         )
     
+    # Add score overlay (compact, transparent, top left, below eFG)
+    # Check if eFG will be displayed to position score correctly
+    has_efg = efg_first_half is not None or efg_second_half is not None
+    
+    if "away_score" in tfs_df.columns and "home_score" in tfs_df.columns and "period_number" in tfs_df.columns:
+        try:
+            # Extract scores by period - using max score for each period (score at end of period)
+            # Score definition: max(away_score) and max(home_score) for each period_number
+            # This gives us the score at the end of each period
+            away_team_name = tfs_df["away_team_name"].iloc[0] if "away_team_name" in tfs_df.columns else "Away"
+            home_team_name = tfs_df["home_team_name"].iloc[0] if "home_team_name" in tfs_df.columns else "Home"
+            
+            # Get max scores for each period (represents score at end of period)
+            periods = sorted(tfs_df["period_number"].unique())
+            score_data = []
+            
+            for period in periods:
+                period_data = tfs_df[tfs_df["period_number"] == period]
+                if len(period_data) > 0:
+                    away_score = period_data["away_score"].max()
+                    home_score = period_data["home_score"].max()
+                    if pd.notna(away_score) and pd.notna(home_score):
+                        score_data.append({
+                            "period": period,
+                            "away_score": int(away_score),
+                            "home_score": int(home_score)
+                        })
+            
+            if score_data:
+                # Build compact score string
+                period_labels = []
+                away_scores = []
+                home_scores = []
+                
+                for score_row in score_data:
+                    period = score_row["period"]
+                    if period == 1:
+                        period_labels.append("H1")
+                    elif period == 2:
+                        period_labels.append("H2")
+                    elif period > 2:
+                        period_labels.append(f"OT{period - 2}")
+                    else:
+                        period_labels.append(f"P{period}")
+                    away_scores.append(str(score_row["away_score"]))
+                    home_scores.append(str(score_row["home_score"]))
+                
+                # Final score (last period's score)
+                final_away = away_scores[-1]
+                final_home = home_scores[-1]
+                
+                # Build compact text: "Away: H1 30 H2 45 FNL 75" on first line, "Home: H1 28 H2 42 FNL 70" on second
+                score_parts = []
+                score_parts.append(f"{away_team_name}: " + " ".join([f"{label} {score}" for label, score in zip(period_labels, away_scores)]) + f" FNL {final_away}")
+                score_parts.append(f"{home_team_name}: " + " ".join([f"{label} {score}" for label, score in zip(period_labels, home_scores)]) + f" FNL {final_home}")
+                score_text = "\n".join(score_parts)
+                
+                # Position below eFG if eFG is present, otherwise at top
+                score_y_pos = 0.90 if has_efg else 0.95
+                
+                # Add as text box with transparent background
+                ax.text(
+                    0.02, score_y_pos, score_text,
+                    transform=ax.transAxes,
+                    fontsize=8,
+                    verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='gray', linewidth=0.5),
+                    family='monospace'  # Monospace for alignment
+                )
+        except Exception as e:
+            import traceback
+            print(f"Error creating score overlay: {e}")
+            print(traceback.format_exc())
+    
     # Add eFG% annotations if available
     efg_text = []
     if efg_first_half is not None:

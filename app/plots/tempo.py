@@ -516,20 +516,20 @@ def build_tempo_figure(
                 return default
             return val
         
-        # Overall row
+        # Overall row - reordered: Metric, P1 (Cnt, Mean, Med, Slow%), P2 (Cnt, Mean, Med, Slow%), Gm (Cnt, Mean, Med, Slow%)
         table_data.append([
             "Overall",
             str(residual_data.get('total_poss_p1', 0)),
-            str(residual_data.get('total_poss_p2', 0)),
-            str(residual_data.get('total_poss', 0)),
             f"{residual_data.get('avg_residual_p1', 0):+.1f}s" if residual_data.get('total_poss_p1', 0) > 0 else "-",
-            f"{residual_data.get('avg_residual_p2', 0):+.1f}s" if residual_data.get('total_poss_p2', 0) > 0 else "-",
-            f"{residual_data.get('avg_residual', 0):+.1f}s",
             f"{residual_data.get('median_residual_p1', 0):+.1f}s" if residual_data.get('total_poss_p1', 0) > 0 else "-",
-            f"{residual_data.get('median_residual_p2', 0):+.1f}s" if residual_data.get('total_poss_p2', 0) > 0 else "-",
-            f"{residual_data.get('median_residual', 0):+.1f}s",
             f"{residual_data.get('pct_above_p1', 0):.1f}%" if residual_data.get('total_poss_p1', 0) > 0 else "-",
+            str(residual_data.get('total_poss_p2', 0)),
+            f"{residual_data.get('avg_residual_p2', 0):+.1f}s" if residual_data.get('total_poss_p2', 0) > 0 else "-",
+            f"{residual_data.get('median_residual_p2', 0):+.1f}s" if residual_data.get('total_poss_p2', 0) > 0 else "-",
             f"{residual_data.get('pct_above_p2', 0):.1f}%" if residual_data.get('total_poss_p2', 0) > 0 else "-",
+            str(residual_data.get('total_poss', 0)),
+            f"{residual_data.get('avg_residual', 0):+.1f}s",
+            f"{residual_data.get('median_residual', 0):+.1f}s",
             f"{residual_data.get('pct_above', 0):.1f}%"
         ])
         
@@ -555,22 +555,23 @@ def build_tempo_figure(
                 table_data.append([
                     type_labels_display[poss_type],
                     str(count_p1),
-                    str(count_p2),
-                    str(count_gm),
                     f"{avg_p1:+.1f}s" if avg_p1 is not None else "-",
-                    f"{avg_p2:+.1f}s" if avg_p2 is not None else "-",
-                    f"{avg_gm:+.1f}s",
                     f"{median_p1:+.1f}s" if median_p1 is not None else "-",
-                    f"{median_p2:+.1f}s" if median_p2 is not None else "-",
-                    f"{median_gm:+.1f}s",
                     f"{pct_p1:.1f}%" if pct_p1 is not None else "-",
+                    str(count_p2),
+                    f"{avg_p2:+.1f}s" if avg_p2 is not None else "-",
+                    f"{median_p2:+.1f}s" if median_p2 is not None else "-",
                     f"{pct_p2:.1f}%" if pct_p2 is not None else "-",
+                    str(count_gm),
+                    f"{avg_gm:+.1f}s",
+                    f"{median_gm:+.1f}s",
                     f"{pct_gm:.1f}%"
                 ])
         
-        # Create table with 13 columns
-        col_labels = ["Metric", "P1 Cnt", "P2 Cnt", "Gm Cnt", "P1 Mean", "P2 Mean", "Gm Mean", 
-                     "P1 Med", "P2 Med", "Gm Med", "P1 Slow%", "P2 Slow%", "Gm Slow%"]
+        # Create table with 13 columns - ordered: Metric, then all P1, then all P2, then all Gm
+        col_labels = ["Metric", "P1 Cnt", "P1 Mean", "P1 Med", "P1 Slow%", 
+                     "P2 Cnt", "P2 Mean", "P2 Med", "P2 Slow%",
+                     "Gm Cnt", "Gm Mean", "Gm Med", "Gm Slow%"]
         table = ax_residual.table(
             cellText=table_data,
             colLabels=col_labels,
@@ -631,8 +632,8 @@ def build_tempo_figure(
             # Column 0: Metric column (light gray)
             table[(row_idx, 0)].set_facecolor('#F0F0F0')
             
-            # Count columns (1, 2, 3) - white background
-            for col_idx in [1, 2, 3]:
+            # Count columns (1, 5, 9) - P1 Cnt, P2 Cnt, Gm Cnt - white background
+            for col_idx in [1, 5, 9]:
                 table[(row_idx, col_idx)].set_facecolor('#FFFFFF')
         
         # Remove axes for table

@@ -593,8 +593,8 @@ def build_tempo_figure(
         # Color code data cells
         for i, row in enumerate(table_data):
             row_idx = i + 1  # Data rows start at index 1 (after header)
-            # Color code Mean columns (indices 4, 5, 6)
-            for col_idx in [4, 5, 6]:
+            # Color code Mean columns (indices 2, 6, 10) - P1 Mean, P2 Mean, Gm Mean
+            for col_idx in [2, 6, 10]:
                 if col_idx < len(row) and row[col_idx] != "-":
                     try:
                         val = float(row[col_idx].replace("s", ""))
@@ -605,8 +605,8 @@ def build_tempo_figure(
                     except:
                         pass
             
-            # Color code Median columns (indices 7, 8, 9)
-            for col_idx in [7, 8, 9]:
+            # Color code Median columns (indices 3, 7, 11) - P1 Med, P2 Med, Gm Med
+            for col_idx in [3, 7, 11]:
                 if col_idx < len(row) and row[col_idx] != "-":
                     try:
                         val = float(row[col_idx].replace("s", ""))
@@ -617,8 +617,8 @@ def build_tempo_figure(
                     except:
                         pass
             
-            # Color code % Slower columns (indices 10, 11, 12)
-            for col_idx in [10, 11, 12]:
+            # Color code % Slower columns (indices 4, 8, 12) - P1 Slow%, P2 Slow%, Gm Slow%
+            for col_idx in [4, 8, 12]:
                 if col_idx < len(row) and row[col_idx] != "-":
                     try:
                         val = float(row[col_idx].replace("%", ""))

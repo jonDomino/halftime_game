@@ -233,10 +233,10 @@ def calculate_expected_tfs(
     - oppo_made_ft: TFS = 28.1118 + -0.065201 * closing_total
     
     Period 2 formulas (require score_diff):
-    - turnover: TFS = 21.7170 + -0.055586 * closing_total + -0.060522 * score_diff
-    - rebound: TFS = 24.5006 + -0.073008 * closing_total + -0.052952 * score_diff
-    - oppo_made_shot: TFS = 33.5933 + -0.089827 * closing_total + -0.031034 * score_diff
-    - oppo_made_ft: TFS = 25.9001 + -0.059410 * closing_total + 0.035455 * score_diff
+    - turnover: TFS = 22.0475 + -0.057148 * closing_total + -0.061952 * score_diff
+    - rebound: TFS = 24.2071 + -0.072452 * closing_total + -0.045162 * score_diff
+    - oppo_made_shot: TFS = 35.0632 + -0.097778 * closing_total + -0.034749 * score_diff
+    - oppo_made_ft: TFS = 29.7614 + -0.073256 * closing_total + -0.030282 * score_diff
     
     If period_number is not provided or is 1, uses Period 1 formulas.
     If period_number is 2 or greater and score_diff is provided, uses Period 2 formulas.
@@ -267,16 +267,16 @@ def calculate_expected_tfs(
             score_diff = float(score_diff)
             
             if poss_start_type == "turnover":
-                return 21.7170 + (-0.055586 * closing_total) + (-0.060522 * score_diff)
+                return 22.0475 + (-0.057148 * closing_total) + (-0.061952 * score_diff)
             elif poss_start_type == "rebound":
-                return 24.5006 + (-0.073008 * closing_total) + (-0.052952 * score_diff)
+                return 24.2071 + (-0.072452 * closing_total) + (-0.045162 * score_diff)
             elif poss_start_type == "oppo_made_shot":
-                return 33.5933 + (-0.089827 * closing_total) + (-0.031034 * score_diff)
+                return 35.0632 + (-0.097778 * closing_total) + (-0.034749 * score_diff)
             elif poss_start_type == "oppo_made_ft":
-                return 25.9001 + (-0.059410 * closing_total) + (0.035455 * score_diff)
+                return 29.7614 + (-0.073256 * closing_total) + (-0.030282 * score_diff)
             else:
                 # Unknown type, use rebound formula as default
-                return 24.5006 + (-0.073008 * closing_total) + (-0.052952 * score_diff)
+                return 24.2071 + (-0.072452 * closing_total) + (-0.045162 * score_diff)
         else:
             # Period 1 formulas
             if poss_start_type == "turnover":

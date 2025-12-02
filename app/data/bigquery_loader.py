@@ -252,7 +252,7 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
           m.away_rotationNumber,
           m.home_rotationNumber,
         
-          CASE WHEN m.away_rotationNumber < 1000 THEN 'main' ELSE 'extra' END AS board,
+          CASE WHEN COALESCE(m.away_rotationNumber, 9999) < 1000 THEN 'main' ELSE 'extra' END AS board,
         
           ft.closing_total,
         
@@ -262,32 +262,40 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
           -- 2. Bookmaker
           -- 3. Forced value = 47.2% of closing total (rounded to nearest half)
           -- ============================================
-          COALESCE(
-            fht.closing_1h_total,
-            ROUND(ft.closing_total * 0.472 * 2) / 2
-          ) AS closing_1h_total,
+          CASE 
+            WHEN ft.closing_total IS NOT NULL THEN
+              COALESCE(
+                fht.closing_1h_total,
+                ROUND(ft.closing_total * 0.472 * 2) / 2
+              )
+            ELSE NULL
+          END AS closing_1h_total,
         
           sp.closing_spread_home,
         
-          -- lookahead 2H uses the same forced value
-          (ft.closing_total -
-           COALESCE(
-             fht.closing_1h_total,
-             ROUND(ft.closing_total * 0.472 * 2) / 2
-           )
-          ) AS lookahead_2h_total
+          -- lookahead 2H uses the same forced value (only calculate if closing_total exists)
+          CASE 
+            WHEN ft.closing_total IS NOT NULL THEN
+              (ft.closing_total -
+               COALESCE(
+                 fht.closing_1h_total,
+                 ROUND(ft.closing_total * 0.472 * 2) / 2
+               )
+              )
+            ELSE NULL
+          END AS lookahead_2h_total
         
-        FROM event_meta m
+        FROM `meatloaf-427522.cbb_2025.xref_games` x
+        LEFT JOIN event_meta m
+          ON x.event_id = m.eventId
         LEFT JOIN full_totals ft
-          ON m.eventId = ft.eventId
+          ON x.event_id = ft.eventId
         LEFT JOIN first_half_totals fht
-          ON m.eventId = fht.eventId
+          ON x.event_id = fht.eventId
         LEFT JOIN closing_home_spread sp
-          ON m.eventId = sp.eventId
-        LEFT JOIN `meatloaf-427522.cbb_2025.xref_games` x
-          ON m.eventId = x.event_id
+          ON x.event_id = sp.eventId
         WHERE x.game_id IN ({game_ids_str})
-        ORDER BY m.eventStart DESC
+        ORDER BY COALESCE(m.eventStart, TIMESTAMP('1900-01-01')) DESC
         """
         
         # Execute query

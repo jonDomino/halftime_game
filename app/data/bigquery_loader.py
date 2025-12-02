@@ -36,7 +36,7 @@ def should_run_query() -> bool:
 
 
 @st.cache_data(ttl=config.CACHE_TTL_CLOSING_TOTALS)  # Cache for configured duration (closing totals don't change often)
-def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, Optional[int]]]:
+def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, Optional[int], Optional[float], Optional[float], Optional[float], Optional[str]]]:
     """Internal function to fetch closing totals from BigQuery.
     
     This is cached for 1 hour. The wrapper function handles time restrictions.
@@ -45,7 +45,7 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
         game_ids: List of game ID strings
         
     Returns:
-        Dictionary mapping game_id to (closing_total, board, rotation_number)
+        Dictionary mapping game_id to (closing_total, board, rotation_number, closing_1h_total, lookahead_2h_total, closing_spread_home, home_team_name)
     """
     
     # Load credentials - try multiple methods
@@ -119,57 +119,182 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
         game_ids_str = ",".join([f"'{gid}'" for gid in game_ids])
         
         query = f"""
-        WITH last_two_days AS (
+        WITH last_two_days_pg AS (
           SELECT *
           FROM `meatloaf-427522.markets.pregame`
-          WHERE book = 'Unabated'
-            AND betType = 3               -- totals
-            AND market = 'total'
+          WHERE book IN ('Unabated', 'Bookmaker')
             AND DATE(modifiedOn) >= DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY)
         ),
         
-        ranked AS (
-          SELECT
-            p.eventId,
-            p.eventStart,
-            p.awayTeamName,
-            p.homeTeamName,
-            p.away_rotationNumber,
-            p.points AS closing_total,
-            p.modifiedOn,
-            ROW_NUMBER() OVER (
-              PARTITION BY p.eventId
-              ORDER BY p.modifiedOn DESC
-            ) AS rn
-          FROM last_two_days p
-        )
+        last_two_days_1h AS (
+          SELECT *
+          FROM `meatloaf-427522.markets.first_half`
+          WHERE book IN ('Unabated', 'Bookmaker')
+            AND DATE(modifiedOn) >= DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY)
+        ),
         
+        -- ============================================================
+        -- FULL GAME TOTALS (UNABADED FIRST, THEN BOOKMAKER)
+        -- ============================================================
+        full_totals_ranked AS (
+          SELECT
+            eventId,
+            book,
+            points AS closing_total,
+            modifiedOn,
+            ROW_NUMBER() OVER (
+              PARTITION BY eventId, book
+              ORDER BY modifiedOn DESC
+            ) AS rn
+          FROM last_two_days_pg
+          WHERE betType = 3
+            AND market = 'total'
+        ),
+        
+        full_totals AS (
+          SELECT
+            eventId,
+            -- Prefer Unabated; fallback to Bookmaker
+            COALESCE(
+              MAX(IF(book = 'Unabated'  AND rn = 1, closing_total, NULL)),
+              MAX(IF(book = 'Bookmaker' AND rn = 1, closing_total, NULL))
+            ) AS closing_total
+          FROM full_totals_ranked
+          GROUP BY eventId
+        ),
+        
+        -- ============================================================
+        -- FIRST HALF TOTALS (UNABADED FIRST, THEN BOOKMAKER)
+        -- ============================================================
+        first_half_totals_ranked AS (
+          SELECT
+            eventId,
+            book,
+            points AS closing_1h_total,
+            modifiedOn,
+            ROW_NUMBER() OVER (
+              PARTITION BY eventId, book
+              ORDER BY modifiedOn DESC
+            ) AS rn
+          FROM last_two_days_1h
+          WHERE betType = 3
+            AND market = 'total'
+        ),
+        
+        first_half_totals AS (
+          SELECT
+            eventId,
+            -- Prefer Unabated; fallback to Bookmaker
+            COALESCE(
+              MAX(IF(book = 'Unabated'  AND rn = 1, closing_1h_total, NULL)),
+              MAX(IF(book = 'Bookmaker' AND rn = 1, closing_1h_total, NULL))
+            ) AS closing_1h_total
+          FROM first_half_totals_ranked
+          GROUP BY eventId
+        ),
+        
+        -- ============================================================
+        -- SPREADS (HOME POV, UNABADED FIRST, THEN BOOKMAKER)
+        -- ============================================================
+        closing_home_spread_ranked AS (
+          SELECT
+            eventId,
+            book,
+            points AS closing_spread_home,
+            modifiedOn,
+            ROW_NUMBER() OVER (
+              PARTITION BY eventId, book
+              ORDER BY modifiedOn DESC
+            ) AS rn
+          FROM last_two_days_pg
+          WHERE betType = 2
+            AND market = 'spread'
+            AND side = 'si1'     -- home POV
+        ),
+        
+        closing_home_spread AS (
+          SELECT
+            eventId,
+            -- Prefer Unabated; fallback to Bookmaker
+            COALESCE(
+              MAX(IF(book = 'Unabated'  AND rn = 1, closing_spread_home, NULL)),
+              MAX(IF(book = 'Bookmaker' AND rn = 1, closing_spread_home, NULL))
+            ) AS closing_spread_home
+          FROM closing_home_spread_ranked
+          GROUP BY eventId
+        ),
+        
+        -- ============================================================
+        -- EVENT META (from Unabated only)
+        -- ============================================================
+        event_meta AS (
+          SELECT
+            eventId,
+            eventStart,
+            awayTeamName,
+            homeTeamName,
+            away_rotationNumber,
+            home_rotationNumber
+          FROM last_two_days_pg
+          WHERE book = 'Unabated'
+          GROUP BY 1,2,3,4,5,6
+        ),
+        
+        -- ============================================================
+        -- FINAL OUTPUT
+        -- ============================================================
         SELECT
           x.game_id,
-          r.eventId,
-          r.eventStart,
-          r.awayTeamName,
-          r.homeTeamName,
-          r.away_rotationNumber,
-          CASE 
-            WHEN r.away_rotationNumber < 1000 THEN 'main'
-            ELSE 'extra'
-          END AS board,
-          r.closing_total,
-          r.modifiedOn AS closing_timestamp
-        FROM ranked r
+          m.eventId,
+          m.eventStart,
+          m.awayTeamName,
+          m.homeTeamName,
+          m.away_rotationNumber,
+          m.home_rotationNumber,
+        
+          CASE WHEN m.away_rotationNumber < 1000 THEN 'main' ELSE 'extra' END AS board,
+        
+          ft.closing_total,
+        
+          -- ============================================
+          -- CLOSING 1H TOTAL WITH FALLBACK RULE
+          -- 1. Unabated
+          -- 2. Bookmaker
+          -- 3. Forced value = 47.2% of closing total (rounded to nearest half)
+          -- ============================================
+          COALESCE(
+            fht.closing_1h_total,
+            ROUND(ft.closing_total * 0.472 * 2) / 2
+          ) AS closing_1h_total,
+        
+          sp.closing_spread_home,
+        
+          -- lookahead 2H uses the same forced value
+          (ft.closing_total -
+           COALESCE(
+             fht.closing_1h_total,
+             ROUND(ft.closing_total * 0.472 * 2) / 2
+           )
+          ) AS lookahead_2h_total
+        
+        FROM event_meta m
+        LEFT JOIN full_totals ft
+          ON m.eventId = ft.eventId
+        LEFT JOIN first_half_totals fht
+          ON m.eventId = fht.eventId
+        LEFT JOIN closing_home_spread sp
+          ON m.eventId = sp.eventId
         LEFT JOIN `meatloaf-427522.cbb_2025.xref_games` x
-          ON r.eventId = x.event_id
-        WHERE r.rn = 1
-          AND x.game_id IN ({game_ids_str})
-        ORDER BY r.modifiedOn DESC
+          ON m.eventId = x.event_id
+        WHERE x.game_id IN ({game_ids_str})
+        ORDER BY m.eventStart DESC
         """
         
         # Execute query
         query_job = client.query(query)
         results = query_job.result()
         
-        # Build dictionary with (closing_total, board, rotation_number) tuples
+        # Build dictionary with (closing_total, board, rotation_number, closing_1h_total, lookahead_2h_total, closing_spread_home, home_team_name) tuples
         closing_totals = {}
         for row in results:
             if row.game_id and row.closing_total is not None:
@@ -177,7 +302,11 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
                 closing_total = float(row.closing_total)
                 board = str(row.board) if row.board else 'main'
                 rotation_number = int(row.away_rotationNumber) if row.away_rotationNumber is not None else None
-                closing_totals[str(row.game_id)] = (closing_total, board, rotation_number)
+                closing_1h_total = float(row.closing_1h_total) if row.closing_1h_total is not None else None
+                lookahead_2h_total = float(row.lookahead_2h_total) if row.lookahead_2h_total is not None else None
+                closing_spread_home = float(row.closing_spread_home) if row.closing_spread_home is not None else None
+                home_team_name = str(row.homeTeamName) if row.homeTeamName else None
+                closing_totals[str(row.game_id)] = (closing_total, board, rotation_number, closing_1h_total, lookahead_2h_total, closing_spread_home, home_team_name)
         
         return closing_totals
         
@@ -190,8 +319,8 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
         return {}
 
 
-def get_closing_totals(game_ids: list) -> Dict[str, Tuple[float, str, Optional[int]]]:
-    """Get closing totals, board info, and rotation numbers for a list of game IDs from BigQuery.
+def get_closing_totals(game_ids: list) -> Dict[str, Tuple[float, str, Optional[int], Optional[float], Optional[float], Optional[float], Optional[str]]]:
+    """Get closing totals, board info, rotation numbers, first half totals, lookahead 2H totals, home spreads, and home team names for a list of game IDs from BigQuery.
     
     Only runs query once per hour (via cache) and skips between 10pm-8am.
     During off-hours, returns cached data if available, otherwise empty dict.
@@ -200,7 +329,7 @@ def get_closing_totals(game_ids: list) -> Dict[str, Tuple[float, str, Optional[i
         game_ids: List of game ID strings
         
     Returns:
-        Dictionary mapping game_id to (closing_total, board, rotation_number)
+        Dictionary mapping game_id to (closing_total, board, rotation_number, closing_1h_total, lookahead_2h_total, closing_spread_home, home_team_name)
     """
     # Check if we should run the query based on time
     if not should_run_query():

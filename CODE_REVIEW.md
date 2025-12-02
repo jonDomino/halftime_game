@@ -501,12 +501,22 @@ The refactoring can be done incrementally without disrupting current functionali
 ### Recent Work Completed (2025)
 
 #### Latest Features (Most Recent)
+- ✅ **Period-Specific Expected TFS**: Split formulas into Period 1 and Period 2
+  - Period 2 includes score differential (abs(away_score - home_score) at end of Period 1)
+  - Automatically calculates score_diff from Period 1 data
+- ✅ **New Possession Start Type**: Added `oppo_made_ft` (opponent made free throw)
+  - Separate from `oppo_made_shot` due to clock stopping behavior
+  - Fully integrated in plots, legends, and residual calculations
+- ✅ **Pipeline Refactoring**: Switched from `builders/` to `build_tfs/builders/`
+  - Fixed ESPN PBP API pagination to handle games with >500 plays
+  - Removed old `builders/` directory
+- ✅ **Removed Period Start**: Dropped `period_start` from all visualizations and legends
+
+#### Previous Improvements
 - ✅ **Rotation Numbers Display**: Added away team rotation numbers to plots (top-left margin, dark gray text)
 - ✅ **Rotation-Based Sorting**: Games sorted by rotation number descending (higher numbers first)
 - ✅ **Default Tab Selection**: Dashboard defaults to highest priority available tab (Halftime > First Half > Early 1H > Second Half > Complete > alphabetical)
 - ✅ **Residuals Table Enhancement**: Renamed "% Faster" column to "% Slower" to match shading logic
-
-#### Previous Improvements
 - ✅ Removed duplicate root-level files (`get_sched.py`, `get_pbp.py`)
 - ✅ Removed obsolete documentation files (`DEPENDENCIES_ADDED.md`, `PASTE_INTO_STREAMLIT_SECRETS.toml`)
 - ✅ Removed credentials from git history
@@ -515,10 +525,12 @@ The refactoring can be done incrementally without disrupting current functionali
 
 ### Current Import Structure (Correct)
 - ✅ `app/data/schedule_loader.py` → `from .get_sched import get_sched`
-- ✅ `app/data/pbp_loader.py` → `from .get_pbp import get_pbp`
-- ✅ `app/main.py` → `from app.data.get_pbp import get_pbp` (for parallel processing)
+- ✅ `app/data/pbp_loader.py` → `from .get_pbp import get_pbp` (uses paginated version)
+- ✅ `app/tfs/preprocess.py` → `from build_tfs.builders.action_time.*`
+- ✅ `app/tfs/compute.py` → `from build_tfs.builders.action_time.*`
+- ✅ `app/data/get_pbp.py` → Uses pagination logic from `build_tfs/get_pbp.py`
 
-**All imports correctly reference `app/data/` versions.**
+**All imports correctly reference `build_tfs/` for TFS processing modules.**
 
 ---
 

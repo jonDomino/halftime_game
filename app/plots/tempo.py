@@ -39,7 +39,10 @@ def build_tempo_figure(
     closing_total: Optional[float] = None,
     efg_first_half: Optional[float] = None,
     efg_second_half: Optional[float] = None,
-    rotation_number: Optional[int] = None
+    rotation_number: Optional[int] = None,
+    lookahead_2h_total: Optional[float] = None,
+    closing_spread_home: Optional[float] = None,
+    home_team_name: Optional[str] = None
 ) -> plt.Figure:
     """Build tempo visualization figure.
     
@@ -53,6 +56,9 @@ def build_tempo_figure(
         efg_first_half: First half eFG%
         efg_second_half: Second half eFG%
         rotation_number: Away team rotation number (optional)
+        lookahead_2h_total: Lookahead 2H total (optional)
+        closing_spread_home: Closing spread from home team's perspective (optional)
+        home_team_name: Home team name (optional)
         
     Returns:
         Matplotlib figure
@@ -753,16 +759,48 @@ def build_tempo_figure(
             transform=fig.transFigure  # Use figure coordinates
         )
     
-    # Add closing total below rotation number
+    # Add closing total, lookahead 2H total, and spread below rotation number
+    y_pos = 0.95  # Start position below rotation number
+    line_height = 0.025  # Vertical spacing between lines
+    
     if closing_total is not None:
         fig.text(
-            0.02, 0.95,  # Below rotation number
+            0.02, y_pos,
             f"Total: {closing_total:.1f}",
             fontsize=9,
-            color='#0a0a0a',  # Very dark, almost black
+            color='#0a0a0a',
             horizontalalignment='left',
             verticalalignment='top',
-            transform=fig.transFigure  # Use figure coordinates
+            transform=fig.transFigure
+        )
+        y_pos -= line_height
+    
+    if lookahead_2h_total is not None:
+        fig.text(
+            0.02, y_pos,
+            f"2H Looka: {lookahead_2h_total:.1f}",
+            fontsize=9,
+            color='#0a0a0a',
+            horizontalalignment='left',
+            verticalalignment='top',
+            transform=fig.transFigure
+        )
+        y_pos -= line_height
+    
+    if closing_spread_home is not None and home_team_name:
+        # Format spread: show as "-12" or "12" (no + sign for positive)
+        spread_str = f"{closing_spread_home:.1f}"
+        # Remove trailing .0 if it's a whole number
+        if spread_str.endswith('.0'):
+            spread_str = spread_str[:-2]
+        fig.text(
+            0.02, y_pos,
+            f"{home_team_name}: {spread_str}",
+            fontsize=9,
+            color='#0a0a0a',
+            horizontalalignment='left',
+            verticalalignment='top',
+            transform=fig.transFigure
         )
     
     fig.tight_layout()

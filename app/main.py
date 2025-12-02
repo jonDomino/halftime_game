@@ -284,13 +284,23 @@ def get_game_data(game_id: str):
         return None, None, None, None, None
 
 
-def render_game(game_id: str, closing_totals: Dict[str, float] = None, rotation_number: Optional[int] = None):
+def render_game(
+    game_id: str, 
+    closing_totals: Dict[str, float] = None, 
+    rotation_number: Optional[int] = None,
+    lookahead_2h_total: Optional[float] = None,
+    closing_spread_home: Optional[float] = None,
+    home_team_name: Optional[str] = None
+):
     """Render a single game's visualization.
     
     Args:
         game_id: Game identifier
         closing_totals: Dictionary mapping game_id to closing_total
         rotation_number: Away team rotation number (optional)
+        lookahead_2h_total: Lookahead 2H total (optional)
+        closing_spread_home: Closing spread from home team's perspective (optional)
+        home_team_name: Home team name (optional)
     """
     st.markdown(f"**Game {game_id}**")
     
@@ -318,6 +328,11 @@ def render_game(game_id: str, closing_totals: Dict[str, float] = None, rotation_
     if closing_totals and game_id in closing_totals:
         closing_total = closing_totals[game_id]
     
+    # Get lookahead 2H total and spread for this game
+    lookahead_2h = lookahead_2h_total if lookahead_2h_total is not None else None
+    spread_home = closing_spread_home if closing_spread_home is not None else None
+    home_name = home_team_name if home_team_name is not None else None
+    
     # Build and render figure with status label, expected TFS trend, and eFG%
     fig = build_tempo_figure(
         tfs_df, 
@@ -327,7 +342,10 @@ def render_game(game_id: str, closing_totals: Dict[str, float] = None, rotation_
         closing_total=closing_total,
         efg_first_half=efg_1h,
         efg_second_half=efg_2h,
-        rotation_number=rotation_number
+        rotation_number=rotation_number,
+        lookahead_2h_total=lookahead_2h,
+        closing_spread_home=spread_home,
+        home_team_name=home_name
     )
     render_chart(fig)
 
@@ -433,10 +451,13 @@ def _render_content():
     # Filter by board and build closing_totals dict (just closing_total values) and rotation_numbers dict
     closing_totals = {}
     rotation_numbers = {}
+    lookahead_2h_totals = {}
+    closing_spread_home = {}
+    home_team_names = {}  # Store home team names for spread display
     if closing_totals_raw:
         for gid in game_ids:
             if gid in closing_totals_raw:
-                closing_total, board, rotation_number = closing_totals_raw[gid]
+                closing_total, board, rotation_number, closing_1h_total, lookahead_2h_total, spread_home, home_team_name = closing_totals_raw[gid]
                 # Ensure closing_total is a float
                 closing_total = float(closing_total)
                 # Only include if board matches filter
@@ -444,6 +465,12 @@ def _render_content():
                     closing_totals[gid] = closing_total
                     if rotation_number is not None:
                         rotation_numbers[gid] = rotation_number
+                    if lookahead_2h_total is not None:
+                        lookahead_2h_totals[gid] = float(lookahead_2h_total)
+                    if spread_home is not None:
+                        closing_spread_home[gid] = float(spread_home)
+                    if home_team_name:
+                        home_team_names[gid] = home_team_name
     
     # Group games by status
     games_by_status: Dict[str, List[str]] = {
@@ -549,7 +576,17 @@ def _render_content():
                         try:
                             with st.session_state.plot_containers[container_key]:
                                 rotation_number = rotation_numbers.get(gid)
-                                render_game(gid, closing_totals=closing_totals, rotation_number=rotation_number)
+                                lookahead_2h = lookahead_2h_totals.get(gid)
+                                spread_home = closing_spread_home.get(gid)
+                                home_name = home_team_names.get(gid)
+                                render_game(
+                                    gid, 
+                                    closing_totals=closing_totals, 
+                                    rotation_number=rotation_number,
+                                    lookahead_2h_total=lookahead_2h,
+                                    closing_spread_home=spread_home,
+                                    home_team_name=home_name
+                                )
                         except Exception as e:
                             # Log error but don't crash the whole dashboard
                             if 'error_log' not in st.session_state:

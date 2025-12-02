@@ -753,6 +753,18 @@ def build_tempo_figure(
             transform=fig.transFigure  # Use figure coordinates
         )
     
+    # Add closing total below rotation number
+    if closing_total is not None:
+        fig.text(
+            0.02, 0.95,  # Below rotation number
+            f"Total: {closing_total:.1f}",
+            fontsize=9,
+            color='#0a0a0a',  # Very dark, almost black
+            horizontalalignment='left',
+            verticalalignment='top',
+            transform=fig.transFigure  # Use figure coordinates
+        )
+    
     fig.tight_layout()
     return fig
 

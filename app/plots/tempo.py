@@ -811,6 +811,53 @@ def build_tempo_figure(
             transform=fig.transFigure
         )
     
+    # Add 2H Open/Close/Spread table immediately to the left of the Total/Looka/Spread text
+    y_pos_2h = 0.98
+    if opening_2h_total is not None or closing_2h_total is not None or closing_2h_spread is not None:
+        if opening_2h_total is not None:
+            open_str = f"{opening_2h_total:.1f}"
+            if open_str.endswith('.0'):
+                open_str = open_str[:-2]
+            fig.text(
+                0.75, y_pos_2h,
+                f"2H Open: {open_str}",
+                fontsize=9,
+                color='#0a0a0a',
+                horizontalalignment='right',
+                verticalalignment='top',
+                transform=fig.transFigure
+            )
+            y_pos_2h -= line_height
+        
+        if closing_2h_total is not None:
+            close_str = f"{closing_2h_total:.1f}"
+            if close_str.endswith('.0'):
+                close_str = close_str[:-2]
+            fig.text(
+                0.75, y_pos_2h,
+                f"2H Close: {close_str}",
+                fontsize=9,
+                color='#0a0a0a',
+                horizontalalignment='right',
+                verticalalignment='top',
+                transform=fig.transFigure
+            )
+            y_pos_2h -= line_height
+        
+        if closing_2h_spread is not None:
+            spread_2h_str = f"{closing_2h_spread:.1f}"
+            if spread_2h_str.endswith('.0'):
+                spread_2h_str = spread_2h_str[:-2]
+            fig.text(
+                0.75, y_pos_2h,
+                f"2H Spread: {spread_2h_str}",
+                fontsize=9,
+                color='#0a0a0a',
+                horizontalalignment='right',
+                verticalalignment='top',
+                transform=fig.transFigure
+            )
+    
     fig.tight_layout()
     return fig
 

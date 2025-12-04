@@ -40,7 +40,7 @@ STD_DEVS = {
 
 
 def calculate_p_value(mean_residual: float, n: int, std_dev: float) -> float:
-    """Calculate p-value for mean residual.
+    """Calculate p-value for mean residual, formatted for display.
     
     Args:
         mean_residual: Mean residual (observed - expected)
@@ -48,9 +48,11 @@ def calculate_p_value(mean_residual: float, n: int, std_dev: float) -> float:
         std_dev: Population standard deviation
         
     Returns:
-        p-value (0-1): Probability of observing this mean or more extreme by chance
-        - For slow games (positive residual): p-value = P(Z > z) = probability of being this slow or slower
-        - For fast games (negative residual): p-value = P(Z < z) = probability of being this fast or faster
+        p-value (0-1): Formatted for display where:
+        - Higher numbers (closer to 1) = likely slow (red shading when > 0.8)
+        - Lower numbers (closer to 0) = likely fast (green shading when < 0.2)
+        - For slow games (positive residual): returns 1 - P_slower
+        - For fast games (negative residual): returns P_faster
     """
     if n == 0 or std_dev == 0:
         return 0.5  # Default to 50% if no data
@@ -61,22 +63,26 @@ def calculate_p_value(mean_residual: float, n: int, std_dev: float) -> float:
     # z-score (expected mean is 0)
     z = mean_residual / se
     
-    # One-tailed p-value
+    # Calculate p-values based on direction
     if HAS_SCIPY:
         if mean_residual > 0:
-            # Slow game: probability of being this slow or slower
-            p_value = 1 - stats.norm.cdf(z)
+            # Slow game: P_slower = P(Z > z), display 1 - P_slower (higher = more likely slow)
+            p_slower = 1 - stats.norm.cdf(z)
+            return 1 - p_slower
         else:
-            # Fast game: probability of being this fast or faster
-            p_value = stats.norm.cdf(z)
+            # Fast game: P_faster = P(Z < z), display P_faster directly (lower = more likely fast)
+            p_faster = stats.norm.cdf(z)
+            return p_faster
     else:
         # Use approximation if scipy not available
         if mean_residual > 0:
-            p_value = 1 - norm_cdf_approx(z)
+            # Slow game
+            p_slower = 1 - norm_cdf_approx(z)
+            return 1 - p_slower
         else:
-            p_value = norm_cdf_approx(z)
-    
-    return p_value
+            # Fast game
+            p_faster = norm_cdf_approx(z)
+            return p_faster
 
 
 def get_std_dev(period: int, poss_start_type: Optional[str], std_devs: Optional[Dict] = None) -> float:
@@ -934,8 +940,29 @@ def build_tempo_figure(
             # Column 0: Metric column (light gray)
             table[(row_idx, 0)].set_facecolor('#F0F0F0')
             
-            # Count columns (1, 5, 9) - P1 Cnt, P2 Cnt, Gm Cnt - white background
-            for col_idx in [1, 5, 9]:
+            # Color code P-value columns (indices 5, 10, 15) - P1 P-val, P2 P-val, Gm P-val
+            # Higher numbers = likely slow (red), lower numbers = likely fast (green)
+            for col_idx in [5, 10, 15]:
+                if col_idx < len(row) and row[col_idx] != "-":
+                    try:
+                        p_val_text = row[col_idx]
+                        if "%" in p_val_text:
+                            p_val = float(p_val_text.replace("%", "")) / 100.0
+                            if p_val > 0.8:
+                                # High p-value = likely slow - red shading
+                                table[(row_idx, col_idx)].set_facecolor('#FFE6E6')  # Light red
+                            elif p_val < 0.2:
+                                # Low p-value = likely fast - green shading
+                                table[(row_idx, col_idx)].set_facecolor('#E6FFE6')  # Light green
+                            else:
+                                table[(row_idx, col_idx)].set_facecolor('white')
+                        else:
+                            table[(row_idx, col_idx)].set_facecolor('white')
+                    except (ValueError, IndexError):
+                        table[(row_idx, col_idx)].set_facecolor('white')
+            
+            # Count columns (1, 6, 11) - P1 Cnt, P2 Cnt, Gm Cnt - white background
+            for col_idx in [1, 6, 11]:
                 table[(row_idx, col_idx)].set_facecolor('#FFFFFF')
         
         # Remove axes for table

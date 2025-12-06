@@ -187,8 +187,9 @@ def build_tempo_figure(
     opening_2h_total: Optional[float] = None,
     closing_2h_total: Optional[float] = None,
     opening_2h_spread: Optional[float] = None,
-    closing_2h_spread: Optional[float] = None
-) -> plt.Figure:
+    closing_2h_spread: Optional[float] = None,
+    show_period_2: bool = True
+) -> Tuple[plt.Figure, Optional[Dict]]:
     """Build tempo visualization figure.
     
     Args:
@@ -208,10 +209,15 @@ def build_tempo_figure(
         closing_2h_total: Closing 2H total (optional)
         opening_2h_spread: Opening 2H spread (optional)
         closing_2h_spread: Closing 2H spread (optional)
+        show_period_2: Whether to show Period 2 data (default: True). If False, only Period 1 is shown.
         
     Returns:
-        Matplotlib figure
+        Tuple of (Matplotlib figure, residual_data dictionary or None)
     """
+    # Filter TFS data if Period 2 should be hidden
+    if not show_period_2 and "period_number" in tfs_df.columns:
+        tfs_df = tfs_df[tfs_df["period_number"] == 1].copy()
+    
     away, home = get_team_names(tfs_df)
     header = f"{away} @ {home}" if (away and home) else f"Game {game_id}"
     
@@ -247,7 +253,7 @@ def build_tempo_figure(
                 score_diff = abs(float(max_away_score) - float(max_home_score))
     
     # Calculate residuals early if we have closing_total (needed for subplot)
-    residual_data = None
+    residual_data: Optional[Dict] = None
     if closing_total is not None and len(tfs_df) > 0:
         try:
             from app.data.bigquery_loader import calculate_expected_tfs
@@ -1091,5 +1097,5 @@ def build_tempo_figure(
             )
     
     fig.tight_layout()
-    return fig
+    return fig, residual_data
 

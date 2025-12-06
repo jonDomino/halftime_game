@@ -477,6 +477,45 @@ def render_game(
                                 st.error(f"Error rendering game {gid}")
 
 
+def render():
+    """Main render function - flicker-free pattern."""
+    try:
+        st.set_page_config(
+            page_title="Halftime Game", 
+            layout="wide",
+            page_icon="🏀"  # Optional: add basketball emoji as icon
+        )
+    except Exception:
+        # set_page_config can only be called once, ignore if already set
+        pass
+    
+    # Always show title to prevent blank screen
+    st.title("Halftime Game 🏀")
+    st.caption("Version: Prediction Game Mode")
+    st.error("🔴 IF YOU SEE THIS RED BOX, THE NEW CODE IS RUNNING!")
+    st.markdown("---")
+    
+    try:
+        _render_content()
+    except Exception as e:
+        # Catch any unhandled errors to prevent blank screen
+        import traceback
+        st.error("⚠️ An error occurred while rendering the dashboard")
+        with st.expander("Error Details", expanded=True):
+            st.exception(e)
+            st.code(traceback.format_exc())
+        
+        # Show error log if available
+        if 'error_log' in st.session_state and st.session_state.error_log:
+            with st.expander("Recent Errors"):
+                for err in st.session_state.error_log[-5:]:
+                    st.text(err)
+        
+        # Add a refresh button
+        if st.button("🔄 Refresh Dashboard"):
+            st.rerun()
+
+
 if __name__ == "__main__":
     render()
     setup_refresh_timer(config.REFRESH_INTERVAL)

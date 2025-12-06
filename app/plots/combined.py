@@ -31,7 +31,7 @@ def build_combined_figure(
         ax_score = None
     
     # Build tempo plot (we'll need to extract the logic or call it differently)
-    tempo_fig = build_tempo_figure(tfs_df, game_id, show_predictions=show_predictions)
+    tempo_fig, _ = build_tempo_figure(tfs_df, game_id, show_predictions=show_predictions)
     
     # For now, just return the tempo figure
     # TODO: Implement proper subplot combination

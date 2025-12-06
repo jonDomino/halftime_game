@@ -1,4 +1,4 @@
-"""Main Streamlit application entry point"""
+﻿"""Main Streamlit application entry point"""
 import streamlit as st
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Set, Tuple, Optional
@@ -358,83 +358,6 @@ def render_game(
     render_chart(fig)
 
 
-def render():
-    """Main render function - flicker-free pattern."""
-    try:
-        st.set_page_config(
-            page_title="Live TFS Kernel Dashboard", 
-            layout="wide",
-            page_icon="🏀"  # Optional: add basketball emoji as icon
-        )
-    except Exception:
-        # set_page_config can only be called once, ignore if already set
-        pass
-    
-    # Always show title to prevent blank screen
-    st.title("Live TFS Kernel Dashboard")
-    
-    try:
-        _render_content()
-    except Exception as e:
-        # Catch any unhandled errors to prevent blank screen
-        import traceback
-        st.error("⚠️ An error occurred while rendering the dashboard")
-        with st.expander("Error Details", expanded=True):
-            st.exception(e)
-            st.code(traceback.format_exc())
-        
-        # Show error log if available
-        if 'error_log' in st.session_state and st.session_state.error_log:
-            with st.expander("Recent Errors"):
-                for err in st.session_state.error_log[-5:]:
-                    st.text(err)
-        
-        # Add a refresh button
-        if st.button("🔄 Refresh Dashboard"):
-            st.rerun()
-
-
-def _render_content():
-    """Internal render function with actual content."""
-    # Load schedule
-    try:
-        sched = load_schedule()
-    except Exception as e:
-        render_error(f"Error loading schedule: {e}")
-        return
-    
-    if sched.empty:
-        render_error("No schedule data available.")
-        return
-    
-    # Sidebar filters
-    st.sidebar.header("Filters")
-    
-    # Add possession start type legend in sidebar
-    st.sidebar.markdown("### Possession Start Types")
-    from app.util.style import get_poss_start_color
-    
-    poss_start_info = [
-        ("Rebound", "rebound", "#d62728"),
-        ("Turnover", "turnover", "#1f77b4"),
-        ("Opp Made Shot", "oppo_made_shot", "#2ca02c"),
-        ("Opp Made FT", "oppo_made_ft", "#ff7f0e"),
-    ]
-    
-    for label, poss_type, color in poss_start_info:
-        st.sidebar.markdown(
-            f'<span style="display: inline-block; width: 20px; height: 20px; background-color: {color}; border-radius: 3px; margin-right: 8px; vertical-align: middle;"></span>'
-            f'<span style="vertical-align: middle;">{label}</span>',
-            unsafe_allow_html=True
-        )
-    
-    st.sidebar.markdown("---")
-    
-    selected_date = date_selector()
-    selected_boards = board_filter()
-    
-    # Get all games for the selected date
-    game_ids = game_selector(sched, selected_date, auto_select_all=True)
     
     if not game_ids:
         render_warning(f"No games selected or available for {selected_date}")
@@ -498,84 +421,6 @@ def _render_content():
                     import traceback
                     print(traceback.format_exc())
     
-    print(f"DEBUG: After filtering - closing_totals: {len(closing_totals)}, selected_boards: {selected_boards}")
-    
-    # Group games by status
-    games_by_status: Dict[str, List[str]] = {
-        "Early 1H": [],
-        "First Half": [],
-        "Halftime": [],
-        "Second Half": [],
-        "Complete": [],
-        "Not Started": []
-    }
-    
-    for gid in game_ids:
-        # Only include games with closing totals if board filter is active
-        if selected_boards and gid not in closing_totals:
-            continue
-        
-        status = statuses.get(gid, "Not Started")
-        if status in games_by_status:
-            games_by_status[status].append(gid)
-    
-    # Create tabs for each status
-    tab_names = []
-    tab_games = []
-    
-    # Order for display: Early 1H, First Half, Halftime, Second Half, Complete, Not Started
-    status_order = ["Early 1H", "First Half", "Halftime", "Second Half", "Complete", "Not Started"]
-    
-    # Build all tabs first
-    all_tabs_data = []
-    for status in status_order:
-        games = games_by_status[status]
-        if games:  # Only create tab if there are games
-            # Sort games by rotation number descending (higher rotation numbers first)
-            # Games without rotation numbers go to the end
-            games_sorted = sorted(
-                games,
-                key=lambda gid: (rotation_numbers.get(gid) is None, rotation_numbers.get(gid) or 0),
-                reverse=True
-            )
-            all_tabs_data.append({
-                'status': status,
-                'name': f"{status} ({len(games)})",
-                'games': games_sorted
-            })
-    
-    if not all_tabs_data:
-        render_info("No games available for the selected date and board filter.")
-        return
-    
-    # Priority order for default tab selection (first available gets selected)
-    default_priority = ["Halftime", "First Half", "Early 1H", "Second Half", "Complete"]
-    
-    # Find the index of the highest priority available tab
-    default_tab_idx = 0
-    for priority_status in default_priority:
-        for idx, tab_data in enumerate(all_tabs_data):
-            if tab_data['status'] == priority_status:
-                default_tab_idx = idx
-                break
-        else:
-            continue
-        break  # Found the priority tab, stop searching
-    
-    # Reorder tabs so the default tab is first (Streamlit selects first tab by default)
-    if default_tab_idx > 0:
-        all_tabs_data = [all_tabs_data[default_tab_idx]] + \
-                       [tab for idx, tab in enumerate(all_tabs_data) if idx != default_tab_idx]
-    
-    # Build final tab lists
-    for tab_data in all_tabs_data:
-        tab_names.append(tab_data['name'])
-        tab_games.append((tab_data['status'], tab_data['games']))
-    
-    # Create tabs
-    tabs = st.tabs(tab_names)
-    
-    # Initialize plot containers if needed
     if 'plot_containers' not in st.session_state:
         st.session_state.plot_containers = {}
     

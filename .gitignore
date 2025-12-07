@@ -37,6 +37,12 @@ Thumbs.db
 *.parquet
 /data/
 
+# Plot cache (plots are small enough for git, but metadata can be regenerated)
+# Exclude .pkl files and metadata.json, but keep PNG files for git
+cache/plots/*.pkl
+cache/plots/metadata.json
+# Note: PNG files (*.png) are committed to git for historical cache
+
 # Logs
 *.log
 

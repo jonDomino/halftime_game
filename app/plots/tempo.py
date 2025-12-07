@@ -188,7 +188,8 @@ def build_tempo_figure(
     closing_2h_total: Optional[float] = None,
     opening_2h_spread: Optional[float] = None,
     closing_2h_spread: Optional[float] = None,
-    show_period_2: bool = True
+    show_period_2: bool = True,
+    hide_period_2_overlay: bool = False
 ) -> Tuple[plt.Figure, Optional[Dict]]:
     """Build tempo visualization figure.
     
@@ -209,24 +210,33 @@ def build_tempo_figure(
         closing_2h_total: Closing 2H total (optional)
         opening_2h_spread: Opening 2H spread (optional)
         closing_2h_spread: Closing 2H spread (optional)
-        show_period_2: Whether to show Period 2 data (default: True). If False, only Period 1 is shown.
+        show_period_2: Whether to show Period 2 data (default: True). Always renders Period 2, but may hide with overlay.
+        hide_period_2_overlay: If True, adds a black overlay to hide Period 2 region (default: False).
         
     Returns:
         Tuple of (Matplotlib figure, residual_data dictionary or None)
     """
-    # Filter TFS data if Period 2 should be hidden
-    if not show_period_2 and "period_number" in tfs_df.columns:
-        tfs_df = tfs_df[tfs_df["period_number"] == 1].copy()
+    # Always use full data (Period 1 + Period 2) - overlay will hide Period 2 if needed
+    # Store original full dataframe for overlay calculation
+    full_tfs_df = tfs_df.copy()
     
-    away, home = get_team_names(tfs_df)
-    header = f"{away} @ {home}" if (away and home) else f"Game {game_id}"
+    # Remove team names - just show game ID
+    header = f"Game {game_id}"
     
     # Add status to header if provided
     if game_status:
         header = f"{header} [{game_status}]"
     
-    x = tfs_df["chrono_index"].values.astype(float)
-    y = tfs_df["action_time"].values.astype(float)
+    # Use full data (always include Period 2)
+    x = full_tfs_df["chrono_index"].values.astype(float)
+    y = full_tfs_df["action_time"].values.astype(float)
+    
+    # Find where Period 2 starts (for overlay positioning)
+    period_2_start_x = None
+    if "period_number" in full_tfs_df.columns:
+        period_2_data = full_tfs_df[full_tfs_df["period_number"] == 2]
+        if len(period_2_data) > 0:
+            period_2_start_x = period_2_data["chrono_index"].min()
     
     # Create smooth grid
     grid = np.linspace(x.min(), x.max(), 200)
@@ -243,8 +253,8 @@ def build_tempo_figure(
     
     # Calculate score_diff from Period 1 scores (if available)
     score_diff = None
-    if "away_score" in tfs_df.columns and "home_score" in tfs_df.columns and "period_number" in tfs_df.columns:
-        period_1_data = tfs_df[tfs_df["period_number"] == 1]
+    if "away_score" in full_tfs_df.columns and "home_score" in full_tfs_df.columns and "period_number" in full_tfs_df.columns:
+        period_1_data = full_tfs_df[full_tfs_df["period_number"] == 1]
         if len(period_1_data) > 0:
             # Get max scores from period 1
             max_away_score = period_1_data["away_score"].max()
@@ -253,8 +263,9 @@ def build_tempo_figure(
                 score_diff = abs(float(max_away_score) - float(max_home_score))
     
     # Calculate residuals early if we have closing_total (needed for subplot)
+    # Use full dataframe for residual calculations
     residual_data: Optional[Dict] = None
-    if closing_total is not None and len(tfs_df) > 0:
+    if closing_total is not None and len(full_tfs_df) > 0:
         try:
             from app.data.bigquery_loader import calculate_expected_tfs
             
@@ -276,16 +287,16 @@ def build_tempo_figure(
             above_exp_count_p1 = 0
             above_exp_count_p2 = 0
             
-            for idx in range(len(tfs_df)):
-                actual_tfs = float(tfs_df.iloc[idx]["action_time"])
+            for idx in range(len(full_tfs_df)):
+                actual_tfs = float(full_tfs_df.iloc[idx]["action_time"])
                 poss_type = None
                 period_num = None
-                if "poss_start_type" in tfs_df.columns:
-                    poss_type_val = tfs_df.iloc[idx]["poss_start_type"]
+                if "poss_start_type" in full_tfs_df.columns:
+                    poss_type_val = full_tfs_df.iloc[idx]["poss_start_type"]
                     if pd.notna(poss_type_val) and poss_type_val is not None:
                         poss_type = str(poss_type_val).lower()
-                if "period_number" in tfs_df.columns:
-                    period_num_val = tfs_df.iloc[idx]["period_number"]
+                if "period_number" in full_tfs_df.columns:
+                    period_num_val = full_tfs_df.iloc[idx]["period_number"]
                     if pd.notna(period_num_val):
                         period_num = int(period_num_val)
                 
@@ -476,13 +487,13 @@ def build_tempo_figure(
         ax_residual = None
     
     # Plot raw data with color-coding by poss_start_type
-    if "poss_start_type" in tfs_df.columns:
+    if "poss_start_type" in full_tfs_df.columns:
         # Group by poss_start_type and plot each group with different color
         # Don't add labels to main legend - they'll be in separate legend
         poss_start_types = ["rebound", "turnover", "oppo_made_shot", "oppo_made_ft", None]
         
         for poss_type in poss_start_types:
-            mask = tfs_df["poss_start_type"] == poss_type
+            mask = full_tfs_df["poss_start_type"] == poss_type
             if mask.any():
                 ax.scatter(
                     x[mask],
@@ -553,21 +564,21 @@ def build_tempo_figure(
     
     # Calculate and plot possession-level expected TFS trend
     exp_gx, exp_gy = None, None
-    if closing_total is not None and len(tfs_df) > 0:
+    if closing_total is not None and len(full_tfs_df) > 0:
         try:
             # Calculate expected TFS for each possession based on its poss_start_type and period
             # Make sure we iterate in the same order as the DataFrame (which matches chrono_index)
             exp_tfs_values = []
-            for idx in range(len(tfs_df)):
+            for idx in range(len(full_tfs_df)):
                 poss_type = None
                 period_num = None
-                if "poss_start_type" in tfs_df.columns:
-                    poss_type_val = tfs_df.iloc[idx]["poss_start_type"]
+                if "poss_start_type" in full_tfs_df.columns:
+                    poss_type_val = full_tfs_df.iloc[idx]["poss_start_type"]
                     # Handle NaN/None values
                     if pd.notna(poss_type_val) and poss_type_val is not None:
                         poss_type = str(poss_type_val).lower()
-                if "period_number" in tfs_df.columns:
-                    period_num_val = tfs_df.iloc[idx]["period_number"]
+                if "period_number" in full_tfs_df.columns:
+                    period_num_val = full_tfs_df.iloc[idx]["period_number"]
                     if pd.notna(period_num_val):
                         period_num = int(period_num_val)
                 exp_tfs = calculate_expected_tfs(float(closing_total), poss_type, period_num, score_diff)
@@ -643,109 +654,7 @@ def build_tempo_figure(
             label=f"Expected TFS ({expected_tfs:.1f}s)"
         )
     
-    # Add score overlay (compact, transparent, top left, below eFG)
-    # Check if eFG will be displayed to position score correctly
-    has_efg = efg_first_half is not None or efg_second_half is not None
-    
-    if "away_score" in tfs_df.columns and "home_score" in tfs_df.columns and "period_number" in tfs_df.columns:
-        try:
-            # Extract scores by period - using max score for each period (score at end of period)
-            # Score definition: max(away_score) and max(home_score) for each period_number
-            # This gives us the score at the end of each period
-            away_team_name = tfs_df["away_team_name"].iloc[0] if "away_team_name" in tfs_df.columns else "Away"
-            home_team_name = tfs_df["home_team_name"].iloc[0] if "home_team_name" in tfs_df.columns else "Home"
-            
-            # Get max scores for each period (represents score at end of period)
-            periods = sorted(tfs_df["period_number"].unique())
-            period_scores = {}  # Store cumulative scores by period
-            
-            for period in periods:
-                period_data = tfs_df[tfs_df["period_number"] == period]
-                if len(period_data) > 0:
-                    away_score = period_data["away_score"].max()
-                    home_score = period_data["home_score"].max()
-                    if pd.notna(away_score) and pd.notna(home_score):
-                        period_scores[period] = {
-                            "away_score": int(away_score),
-                            "home_score": int(home_score)
-                        }
-            
-            if period_scores:
-                # Build compact score string
-                period_labels = []
-                away_scores = []
-                home_scores = []
-                
-                # H1: cumulative score at end of period 1
-                if 1 in period_scores:
-                    period_labels.append("H1")
-                    away_scores.append(str(period_scores[1]["away_score"]))
-                    home_scores.append(str(period_scores[1]["home_score"]))
-                    prev_away = period_scores[1]["away_score"]
-                    prev_home = period_scores[1]["home_score"]
-                else:
-                    prev_away = 0
-                    prev_home = 0
-                
-                # H2: points scored in period 2
-                if 2 in period_scores:
-                    period_labels.append("H2")
-                    h2_away = period_scores[2]["away_score"] - prev_away
-                    h2_home = period_scores[2]["home_score"] - prev_home
-                    away_scores.append(str(h2_away))
-                    home_scores.append(str(h2_home))
-                    prev_away = period_scores[2]["away_score"]
-                    prev_home = period_scores[2]["home_score"]
-                
-                # OTs: points scored in each OT period
-                ot_num = 1
-                for period in sorted(period_scores.keys()):
-                    if period > 2:
-                        period_labels.append(f"OT{ot_num}")
-                        ot_away = period_scores[period]["away_score"] - prev_away
-                        ot_home = period_scores[period]["home_score"] - prev_home
-                        away_scores.append(str(ot_away))
-                        home_scores.append(str(ot_home))
-                        prev_away = period_scores[period]["away_score"]
-                        prev_home = period_scores[period]["home_score"]
-                        ot_num += 1
-                
-                # Final score (last period's cumulative score)
-                final_period = max(period_scores.keys())
-                final_away = period_scores[final_period]["away_score"]
-                final_home = period_scores[final_period]["home_score"]
-                
-                # Build compact text with aligned columns
-                # Find max team name length for alignment
-                max_team_len = max(len(away_team_name), len(home_team_name))
-                
-                # Build score strings with aligned columns
-                # Format: "Team Name: H1 30 H2 15 OT1 5 FNL 50" with fixed-width team name
-                away_score_str = " ".join([f"{label} {score:>3}" for label, score in zip(period_labels, away_scores)]) + f" FNL {final_away:>3}"
-                home_score_str = " ".join([f"{label} {score:>3}" for label, score in zip(period_labels, home_scores)]) + f" FNL {final_home:>3}"
-                
-                # Format with aligned team names
-                score_parts = []
-                score_parts.append(f"{away_team_name:<{max_team_len}}: {away_score_str}")
-                score_parts.append(f"{home_team_name:<{max_team_len}}: {home_score_str}")
-                score_text = "\n".join(score_parts)
-                
-                # Position below eFG if eFG is present, otherwise at top
-                score_y_pos = 0.90 if has_efg else 0.95
-                
-                # Add as text box with transparent background
-                ax.text(
-                    0.02, score_y_pos, score_text,
-                    transform=ax.transAxes,
-                    fontsize=8,
-                    verticalalignment='top',
-                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='gray', linewidth=0.5),
-                    family='monospace'  # Monospace for alignment
-                )
-        except Exception as e:
-            import traceback
-            print(f"Error creating score overlay: {e}")
-            print(traceback.format_exc())
+    # Score overlay removed - don't show scores to game player
     
     # Add eFG% annotations if available
     efg_text = []
@@ -1033,21 +942,7 @@ def build_tempo_figure(
         )
         y_pos -= line_height
     
-    if closing_spread_home is not None and home_team_name:
-        # Format spread: show as "-12" or "12" (no + sign for positive)
-        spread_str = f"{closing_spread_home:.1f}"
-        # Remove trailing .0 if it's a whole number
-        if spread_str.endswith('.0'):
-            spread_str = spread_str[:-2]
-        fig.text(
-            0.98, y_pos,
-            f"{home_team_name}: {spread_str}",
-            fontsize=9,
-            color='#0a0a0a',
-            horizontalalignment='right',
-            verticalalignment='top',
-            transform=fig.transFigure
-        )
+    # Team name and spread removed from top right - don't show to game player
     
     # Add 2H Open/Close/Spread table immediately to the left of the Total/Looka/Spread text
     y_pos_2h = 0.98
@@ -1095,6 +990,38 @@ def build_tempo_figure(
                 verticalalignment='top',
                 transform=fig.transFigure
             )
+    
+    # Add black overlay to hide Period 2 if requested
+    if hide_period_2_overlay and period_2_start_x is not None:
+        # Get axis limits to determine overlay bounds
+        y_min, y_max = ax.get_ylim()
+        x_max = ax.get_xlim()[1]
+        
+        # Add black rectangle covering Period 2 region
+        from matplotlib.patches import Rectangle
+        overlay = Rectangle(
+            (period_2_start_x, y_min),
+            x_max - period_2_start_x,
+            y_max - y_min,
+            facecolor='black',
+            edgecolor='black',
+            alpha=1.0,
+            zorder=1000  # High zorder to be on top
+        )
+        ax.add_patch(overlay)
+        
+        # Also add text on overlay
+        ax.text(
+            (period_2_start_x + x_max) / 2,
+            (y_min + y_max) / 2,
+            'Period 2\n(Hidden)',
+            ha='center',
+            va='center',
+            fontsize=16,
+            color='white',
+            weight='bold',
+            zorder=1001
+        )
     
     fig.tight_layout()
     return fig, residual_data

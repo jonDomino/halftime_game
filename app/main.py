@@ -2,7 +2,7 @@
 import streamlit as st
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Set, Tuple, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
+# Removed: ThreadPoolExecutor, as_completed - no parallel scanning needed for completed games
 from app.data.schedule_loader import load_schedule
 from app.data.pbp_loader import load_pbp
 from app.data.status import classify_game_status_pbp, GameStatus
@@ -14,88 +14,24 @@ from app.ui.selectors import date_selector, game_selector, status_filter, board_
 from app.ui.renderer import render_chart, render_error, render_warning, render_info, render_badge
 from app.ui.layout import render_game_grid, create_game_grid
 from app.plots.tempo import build_tempo_figure
-from app.util.time import setup_refresh_timer
+# Removed: setup_refresh_timer - no real-time polling needed for completed games
+from app.util.plot_cache import (
+    load_plot_from_cache, load_residual_data_from_cache,
+    pregenerate_plots_for_games, is_cache_fresh, get_missing_plots,
+    get_cache_metadata, save_cache_metadata
+)
 from app.config import config
 
 
-def should_scan_game(game_id: str) -> bool:
-    """Determine if we should scan a game for new PBP data.
-    
-    Rules:
-    - Completed games: Never scan again
-    - Not Started games: Only scan if 10 minutes have passed since last check
-    
-    Args:
-        game_id: Game identifier
-        
-    Returns:
-        True if we should scan, False otherwise
-    """
-    # Initialize session state tracking if needed
-    if 'completed_games' not in st.session_state:
-        st.session_state.completed_games: Set[str] = set()
-    
-    if 'not_started_last_check' not in st.session_state:
-        st.session_state.not_started_last_check: Dict[str, datetime] = {}
-    
-    # Never scan completed games
-    if game_id in st.session_state.completed_games:
-        return False
-    
-    # Check if this game was previously "Not Started"
-    if game_id in st.session_state.not_started_last_check:
-        last_check = st.session_state.not_started_last_check[game_id]
-        time_since_check = datetime.now() - last_check
-        
-        # Only scan if configured throttle time has passed
-        if time_since_check < timedelta(minutes=config.NOT_STARTED_THROTTLE_MINUTES):
-            return False
-    
-    return True
+# Removed: should_scan_game() and _scan_single_game() - no real-time scanning needed for completed games
 
 
-def _scan_single_game(game_id: str, now: datetime) -> Tuple[str, str, bool]:
-    """Scan a single game and return its status.
-    
-    Helper function for parallel processing.
-    Returns status and tracking info, but doesn't update session_state
-    (that's done in the main thread for thread safety).
-    
-    Uses direct get_pbp call to avoid Streamlit context warnings in threads.
-    
-    Args:
-        game_id: Game identifier
-        now: Current datetime for throttling
-        
-    Returns:
-        Tuple of (game_id, status, is_not_started)
-    """
-    try:
-        # Import here to avoid circular imports
-        from app.data.get_pbp import get_pbp
-        
-        # Call get_pbp directly instead of load_pbp to avoid Streamlit context issues
-        # The caching will still work at the get_pbp level if it has its own caching
-        raw_pbp = get_pbp(int(game_id))
-        if raw_pbp is None or len(raw_pbp) == 0:
-            return game_id, "Not Started", True
-        
-        status = classify_game_status_pbp(raw_pbp)
-        is_not_started = (status == "Not Started")
-        return game_id, status, is_not_started
-    except Exception as e:
-        # If we can't load PBP, assume "Not Started" and throttle
-        return game_id, "Not Started", True
-
-
-@st.cache_data(ttl=config.CACHE_TTL_STATUS)  # Cache status for configured duration
+@st.cache_data(ttl=3600)  # Cache status for 1 hour (completed games don't change)
 def get_game_statuses(game_ids: List[str]) -> Dict[str, str]:
-    """Get game statuses for a list of game IDs using parallel processing.
+    """Get game statuses for a list of game IDs.
     
-    Efficient scanning:
-    - Skips completed games (never scans again)
-    - Throttles "Not Started" games (only checks every 10 minutes)
-    - Uses parallel processing for games that need scanning
+    Simplified for completed games only - no real-time polling needed.
+    Status is cached since completed games don't change.
     
     Args:
         game_ids: List of game ID strings
@@ -103,74 +39,18 @@ def get_game_statuses(game_ids: List[str]) -> Dict[str, str]:
     Returns:
         Dictionary mapping game_id to status
     """
-    # Initialize session state if needed
-    if 'completed_games' not in st.session_state:
-        st.session_state.completed_games: Set[str] = set()
-    
-    if 'not_started_last_check' not in st.session_state:
-        st.session_state.not_started_last_check: Dict[str, datetime] = {}
-    
     statuses = {}
-    now = datetime.now()
     
-    # Separate games that need scanning from those that don't
-    games_to_scan = []
-    skipped_games = []
-    
+    # Load PBP data and classify status (cached, no polling)
     for game_id in game_ids:
-        if not should_scan_game(game_id):
-            # Use cached/last known status without making API call
-            if game_id in st.session_state.completed_games:
-                statuses[game_id] = "Complete"
-            elif game_id in st.session_state.not_started_last_check:
+        try:
+            raw_pbp = load_pbp(game_id)
+            if raw_pbp is None or len(raw_pbp) == 0:
                 statuses[game_id] = "Not Started"
             else:
-                statuses[game_id] = "Not Started"
-        else:
-            games_to_scan.append(game_id)
-    
-    # Process games that need scanning in parallel
-    if games_to_scan:
-        # Use ThreadPoolExecutor for I/O-bound operations (API calls)
-        # Max workers: configured to avoid overwhelming the API
-        with ThreadPoolExecutor(max_workers=config.MAX_WORKERS) as executor:
-            # Submit all tasks
-            future_to_game = {
-                executor.submit(_scan_single_game, game_id, now): game_id
-                for game_id in games_to_scan
-            }
-            
-            # Collect results as they complete
-            completed_games_to_add = set()
-            not_started_to_track = {}
-            
-            for future in as_completed(future_to_game):
-                try:
-                    game_id, status, is_not_started = future.result()
-                    statuses[game_id] = status
-                    
-                    # Collect tracking info (update session_state in main thread)
-                    if status == "Complete":
-                        completed_games_to_add.add(game_id)
-                    elif is_not_started:
-                        not_started_to_track[game_id] = now
-                except Exception as e:
-                    # Handle any errors from parallel execution
-                    game_id = future_to_game[future]
-                    statuses[game_id] = "Not Started"
-                    not_started_to_track[game_id] = now
-            
-            # Update session_state in main thread (thread-safe)
-            if completed_games_to_add:
-                st.session_state.completed_games.update(completed_games_to_add)
-            
-            if not_started_to_track:
-                st.session_state.not_started_last_check.update(not_started_to_track)
-            
-            # Remove games that started from throttling
-            for game_id in games_to_scan:
-                if game_id in st.session_state.not_started_last_check and statuses.get(game_id) != "Not Started":
-                    st.session_state.not_started_last_check.pop(game_id, None)
+                statuses[game_id] = classify_game_status_pbp(raw_pbp)
+        except Exception as e:
+            statuses[game_id] = "Not Started"
     
     return statuses
 
@@ -225,13 +105,12 @@ def process_game(game_id: str):
     return tfs_df, raw_pbp
 
 
-@st.cache_data(ttl=config.CACHE_TTL_STATUS)
+@st.cache_data(ttl=3600)  # Cache for 1 hour (completed games don't change)
 def get_game_data(game_id: str):
     """Get processed game data with caching.
     
-    Efficient scanning:
-    - Skips completed games (uses cached data only)
-    - Throttles "Not Started" games
+    Simplified for completed games only - no scanning/polling needed.
+    Data is cached since completed games don't change.
     
     Args:
         game_id: Game identifier
@@ -239,37 +118,18 @@ def get_game_data(game_id: str):
     Returns:
         Tuple of (tfs_df, raw_pbp, status, efg_first_half, efg_second_half) or None if error
     """
-    # Check if we should scan this game
-    if not should_scan_game(game_id):
-        # For completed games, try to use cached data
-        if game_id in st.session_state.get('completed_games', set()):
-            # Try to load from cache (won't make new API call)
-            try:
-                raw_pbp = load_pbp(game_id, use_cache=True)
-                df = preprocess_pbp(raw_pbp)
-                tfs_df = compute_tfs(df)
-                status = "Complete"
-                # Calculate eFG%
-                efg_1h, efg_2h = calculate_efg_by_half(raw_pbp)
-                return tfs_df, raw_pbp, status, efg_1h, efg_2h
-            except:
-                # If cache miss, return None (game is complete, no new data)
-                return None, None, None, None, None
-    
+    # Load and process game data (cached, no scanning needed for completed games)
     try:
         raw_pbp = load_pbp(game_id)
+        if raw_pbp is None or len(raw_pbp) == 0:
+            return None
+        
         df = preprocess_pbp(raw_pbp)
         tfs_df = compute_tfs(df)
         status = classify_game_status_pbp(raw_pbp)
         
         # Calculate eFG% for both halves
         efg_1h, efg_2h = calculate_efg_by_half(raw_pbp)
-        
-        # Track completed games
-        if status == "Complete":
-            if 'completed_games' not in st.session_state:
-                st.session_state.completed_games: Set[str] = set()
-            st.session_state.completed_games.add(game_id)
         
         return tfs_df, raw_pbp, status, efg_1h, efg_2h
     except Exception as e:
@@ -282,6 +142,78 @@ def get_game_data(game_id: str):
         if len(st.session_state.error_log) > 10:
             st.session_state.error_log = st.session_state.error_log[-10:]
         return None, None, None, None, None
+
+
+def init_game_state(game_id: str) -> Dict:
+    """Initialize game state if not exists.
+    
+    Args:
+        game_id: Game identifier
+        
+    Returns:
+        Game state dictionary
+    """
+    if 'game_states' not in st.session_state:
+        st.session_state.game_states = {}
+    if game_id not in st.session_state.game_states:
+        st.session_state.game_states[game_id] = {
+            'prediction_made': False,
+            'user_prediction': None,  # "fast" or "slow" or None
+            'period_2_revealed': False,
+            'correctness': None  # True/False/None
+        }
+    return st.session_state.game_states[game_id]
+
+
+def init_score_tally():
+    """Initialize global score tally if not exists."""
+    if 'score_tally' not in st.session_state:
+        st.session_state.score_tally = {
+            'correct': 0,
+            'total': 0
+        }
+
+
+def render_score_tally():
+    """Display global score tally."""
+    init_score_tally()
+    score = st.session_state.score_tally
+    st.info(f"🎯 Score: {score['correct']} of {score['total']} correct")
+
+
+def calculate_and_update_correctness(game_id: str, residual_data: Dict):
+    """Calculate if user's prediction was correct and update score tally.
+    
+    Args:
+        game_id: Game identifier
+        residual_data: Residual data dictionary from build_tempo_figure()
+    """
+    game_state = st.session_state.game_states.get(game_id, {})
+    user_prediction = game_state.get('user_prediction')
+    
+    if user_prediction is None:
+        return
+    
+    # Get Period 2 median residual
+    median_residual_p2 = residual_data.get('median_residual_p2', 0)
+    
+    # Determine actual result
+    # median_residual_p2 > 0 means Period 2 was SLOWER than expected
+    # median_residual_p2 < 0 means Period 2 was FASTER than expected
+    actual_result = "slow" if median_residual_p2 > 0 else "fast"
+    
+    # Compare to user prediction
+    user_correct = (user_prediction == actual_result)
+    
+    # Update game state (only once)
+    if game_state.get('correctness') is None:
+        game_state['correctness'] = user_correct
+        
+        # Update global score tally
+        init_score_tally()
+        st.session_state.score_tally['total'] += 1
+        if user_correct:
+            st.session_state.score_tally['correct'] += 1
 
 
 def render_game(
@@ -331,6 +263,23 @@ def render_game(
     }
     render_badge(status, status_colors.get(status, "blue"))
     
+    # Initialize game state
+    game_state = init_game_state(game_id)
+    
+    # Show prediction buttons only if prediction not made
+    if not game_state.get('prediction_made', False):
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("⚡ Fast", key=f"fast_{game_id}"):
+                game_state['user_prediction'] = "fast"
+                game_state['prediction_made'] = True
+                st.rerun()
+        with col2:
+            if st.button("🐌 Slow", key=f"slow_{game_id}"):
+                game_state['user_prediction'] = "slow"
+                game_state['prediction_made'] = True
+                st.rerun()
+    
     # Get closing total for possession-level expected TFS calculation
     closing_total = None
     if closing_totals and game_id in closing_totals:
@@ -341,23 +290,84 @@ def render_game(
     spread_home = closing_spread_home if closing_spread_home is not None else None
     home_name = home_team_name if home_team_name is not None else None
     
-    # Build and render figure with status label, expected TFS trend, and eFG%
-    fig = build_tempo_figure(
-        tfs_df, 
-        game_id, 
-        show_predictions=False, 
-        game_status=status,
-        closing_total=closing_total,
-        efg_first_half=efg_1h,
-        efg_second_half=efg_2h,
-        rotation_number=rotation_number,
-        lookahead_2h_total=lookahead_2h,
-        closing_spread_home=spread_home,
-        home_team_name=home_name
-    )
-    render_chart(fig)
+    # Get game state to determine if Period 2 should be hidden with overlay
+    game_state = init_game_state(game_id)
+    prediction_made = game_state.get('prediction_made', False)
+    
+    # Check if Period 2 data exists
+    has_period_2 = False
+    if 'period_number' in tfs_df.columns:
+        has_period_2 = (tfs_df['period_number'] == 2).any()
+    
+    # For completed games, Period 2 should always be available
+    # This check is kept for safety but shouldn't trigger for completed games
+    if not has_period_2:
+        if prediction_made:
+            st.warning("⚠️ Period 2 data not available for this completed game.")
+    
+    # Always render full plot, but hide Period 2 with overlay if prediction not made
+    hide_overlay = not prediction_made and has_period_2
+    
+    # Try to load from cache first
+    cached_plot_path = load_plot_from_cache(game_id, overlay_hidden=hide_overlay)
+    residual_data = load_residual_data_from_cache(game_id)
+    
+    # If cached, display cached image (much faster)
+    if cached_plot_path:
+        from PIL import Image
+        img = Image.open(cached_plot_path)
+        st.image(img, use_container_width=True)
+    else:
+        # If not cached, generate on-the-fly (fallback)
+        fig, residual_data = build_tempo_figure(
+            tfs_df, 
+            game_id, 
+            show_predictions=False, 
+            game_status=status,
+            closing_total=closing_total,
+            efg_first_half=efg_1h,
+            efg_second_half=efg_2h,
+            rotation_number=rotation_number,
+            lookahead_2h_total=lookahead_2h,
+            closing_spread_home=spread_home,
+            home_team_name=home_name,
+            show_period_2=True,  # Always show Period 2 in data
+            hide_period_2_overlay=hide_overlay  # Hide with overlay if prediction not made
+        )
+        render_chart(fig)
+    
+    # Calculate and display correctness after Period 2 is revealed (overlay removed)
+    if prediction_made and has_period_2 and residual_data and not game_state.get('period_2_revealed', False):
+        game_state['period_2_revealed'] = True
+        calculate_and_update_correctness(game_id, residual_data)
+    
+    # Show correctness feedback after Period 2 is revealed
+    if game_state.get('prediction_made', False) and game_state.get('period_2_revealed', False):
+        correctness = game_state.get('correctness')
+        if correctness is not None and residual_data:
+            median_residual_p2 = residual_data.get('median_residual_p2', 0)
+            actual_result = "slower" if median_residual_p2 > 0 else "faster"
+            
+            if correctness:
+                st.success(f"✅ Correct! Period 2 was {actual_result} than expected.")
+            else:
+                st.error(f"❌ Incorrect. Period 2 was {actual_result} than expected.")
 
 
+def _render_content():
+    """Main content rendering function."""
+    # Get user selections
+    selected_date = date_selector()
+    selected_boards = board_filter()
+    
+    # Load schedule
+    sched = load_schedule()
+    if sched is None or sched.empty:
+        render_warning(f"No schedule available for {selected_date}")
+        return
+    
+    # Get all games for selected date (auto-select all for status filtering)
+    game_ids = game_selector(sched, selected_date, auto_select_all=True)
     
     if not game_ids:
         render_warning(f"No games selected or available for {selected_date}")
@@ -367,38 +377,53 @@ def render_game(
     with st.spinner("Loading game statuses..."):
         statuses = get_game_statuses(game_ids)
     
-    # Fetch closing totals for all games (cached, runs once)
+    # FILTER: Only show Completed games (no real-time polling needed)
+    eligible_statuses = {"Complete"}
+    filtered_game_ids = [
+        gid for gid in game_ids
+        if statuses.get(gid) in eligible_statuses
+    ]
+    
+    if not filtered_game_ids:
+        render_warning("No completed games available.")
+        return
+    
+    # Initialize current game index tracking
+    if 'current_game_index' not in st.session_state:
+        st.session_state.current_game_index = 0
+    
+    # Filter by board
+    board_filtered_game_ids = []
     closing_totals_raw = {}
-    if game_ids:
+    if filtered_game_ids:
         try:
-            closing_totals_raw = get_closing_totals(game_ids)
-            print(f"DEBUG: get_closing_totals returned {len(closing_totals_raw)} games for {len(game_ids)} requested")
+            closing_totals_raw = get_closing_totals(filtered_game_ids)
         except Exception as e:
-            # Fail gracefully if BigQuery fails
             import traceback
             print(f"ERROR: get_closing_totals failed: {e}")
             print(traceback.format_exc())
             closing_totals_raw = {}
     
-    # Filter by board and build closing_totals dict (just closing_total values) and rotation_numbers dict
+    # Filter by board and build closing_totals dict and other market data
     closing_totals = {}
     rotation_numbers = {}
     lookahead_2h_totals = {}
     closing_spread_home = {}
-    home_team_names = {}  # Store home team names for spread display
+    home_team_names = {}
     opening_2h_totals = {}
     closing_2h_totals = {}
     opening_2h_spreads = {}
     closing_2h_spreads = {}
+    
     if closing_totals_raw:
-        for gid in game_ids:
+        for gid in filtered_game_ids:
             if gid in closing_totals_raw:
                 try:
                     closing_total, board, rotation_number, closing_1h_total, lookahead_2h_total, spread_home, home_team_name, opening_2h_total, closing_2h_total, opening_2h_spread, closing_2h_spread = closing_totals_raw[gid]
-                    # Ensure closing_total is a float
                     closing_total = float(closing_total)
                     # Only include if board matches filter
                     if board in selected_boards:
+                        board_filtered_game_ids.append(gid)
                         closing_totals[gid] = closing_total
                         if rotation_number is not None:
                             rotation_numbers[gid] = rotation_number
@@ -421,60 +446,91 @@ def render_game(
                     import traceback
                     print(traceback.format_exc())
     
-    if 'plot_containers' not in st.session_state:
-        st.session_state.plot_containers = {}
+    if not board_filtered_game_ids:
+        render_warning("No games available for selected board filter.")
+        return
     
-    # Render games in each tab
-    for tab_idx, (tab, (status, game_list)) in enumerate(zip(tabs, tab_games)):
-        with tab:
-            if not game_list:
-                st.info(f"No {status} games available.")
-                continue
-            
-            # Render games in grid
-            rows = create_game_grid(game_list, cols_per_row=config.COLS_PER_ROW)
-            
-            for row_idx, row in enumerate(rows):
-                columns = st.columns(len(row))
-                for col_idx, gid in enumerate(row):
-                    with columns[col_idx]:
-                        # Create unique key for this game's container
-                        container_key = f"{selected_date}_{status}_{gid}_{row_idx}_{col_idx}"
-                        
-                        # Get or create empty container (persists across refreshes)
-                        if container_key not in st.session_state.plot_containers:
-                            st.session_state.plot_containers[container_key] = st.empty()
-                        
-                        # Render directly into the container (atomic update - no gray out)
-                        try:
-                            with st.session_state.plot_containers[container_key]:
-                                rotation_number = rotation_numbers.get(gid)
-                                lookahead_2h = lookahead_2h_totals.get(gid)
-                                spread_home = closing_spread_home.get(gid)
-                                home_name = home_team_names.get(gid)
-                                opening_2h_t = opening_2h_totals.get(gid)
-                                closing_2h_t = closing_2h_totals.get(gid)
-                                opening_2h_s = opening_2h_spreads.get(gid)
-                                closing_2h_s = closing_2h_spreads.get(gid)
-                                render_game(
-                                    gid, 
-                                    closing_totals=closing_totals, 
-                                    rotation_number=rotation_number,
-                                    lookahead_2h_total=lookahead_2h,
-                                    closing_spread_home=spread_home,
-                                    home_team_name=home_name,
-                                    opening_2h_total=opening_2h_t,
-                                    closing_2h_total=closing_2h_t,
-                                    opening_2h_spread=opening_2h_s,
-                                    closing_2h_spread=closing_2h_s
-                                )
-                        except Exception as e:
-                            # Log error but don't crash the whole dashboard
-                            if 'error_log' not in st.session_state:
-                                st.session_state.error_log = []
-                            st.session_state.error_log.append(f"Game {gid} render error: {str(e)}")
-                            with st.session_state.plot_containers[container_key]:
-                                st.error(f"Error rendering game {gid}")
+    # Check cache freshness and regenerate missing plots if needed
+    # Use incremental mode to preserve historical plots
+    if not is_cache_fresh():
+        missing_plots = get_missing_plots(board_filtered_game_ids)
+        if missing_plots:
+            with st.spinner(f"🔄 Generating {len(missing_plots)} missing plots (preserving historical cache)..."):
+                pregenerate_plots_for_games(
+                    board_filtered_game_ids,
+                    closing_totals,
+                    rotation_numbers,
+                    lookahead_2h_totals,
+                    closing_spread_home,
+                    home_team_names,
+                    opening_2h_totals,
+                    closing_2h_totals,
+                    opening_2h_spreads,
+                    closing_2h_spreads,
+                    incremental=True,  # Only generate missing plots
+                    dev_mode=True  # Auto-commit to git in dev mode
+                )
+            st.success(f"✅ Generated {len(missing_plots)} new plots! Historical cache preserved.")
+            st.rerun()
+        else:
+            # All plots exist, just update metadata timestamp
+            metadata = get_cache_metadata()
+            metadata['last_update'] = datetime.now().isoformat()
+            save_cache_metadata(metadata)
+    
+    # Ensure current_game_index is valid
+    if st.session_state.current_game_index >= len(board_filtered_game_ids):
+        st.session_state.current_game_index = 0
+    
+    # Display score tally
+    render_score_tally()
+    
+    # Show progress indicator
+    current_idx = st.session_state.current_game_index
+    total_games = len(board_filtered_game_ids)
+    st.info(f"Game {current_idx + 1} of {total_games}")
+    
+    # Get current game ID
+    current_game_id = board_filtered_game_ids[current_idx]
+    
+    # Render only the current game
+    try:
+        rotation_number = rotation_numbers.get(current_game_id)
+        lookahead_2h = lookahead_2h_totals.get(current_game_id)
+        spread_home = closing_spread_home.get(current_game_id)
+        home_name = home_team_names.get(current_game_id)
+        opening_2h_t = opening_2h_totals.get(current_game_id)
+        closing_2h_t = closing_2h_totals.get(current_game_id)
+        opening_2h_s = opening_2h_spreads.get(current_game_id)
+        closing_2h_s = closing_2h_spreads.get(current_game_id)
+        
+        render_game(
+            current_game_id, 
+            closing_totals=closing_totals, 
+            rotation_number=rotation_number,
+            lookahead_2h_total=lookahead_2h,
+            closing_spread_home=spread_home,
+            home_team_name=home_name,
+            opening_2h_total=opening_2h_t,
+            closing_2h_total=closing_2h_t,
+            opening_2h_spread=opening_2h_s,
+            closing_2h_spread=closing_2h_s
+        )
+        
+        # Check if current game has prediction made and Period 2 revealed - if so, auto-advance to next
+        game_state = init_game_state(current_game_id)
+        if (game_state.get('prediction_made', False) and 
+            game_state.get('period_2_revealed', False) and 
+            current_idx < len(board_filtered_game_ids) - 1):
+            # Move to next game immediately (user will see result on rerun)
+            st.session_state.current_game_index += 1
+            st.rerun()
+    except Exception as e:
+        # Log error but don't crash the whole dashboard
+        if 'error_log' not in st.session_state:
+            st.session_state.error_log = []
+        st.session_state.error_log.append(f"Game {current_game_id} render error: {str(e)}")
+        st.error(f"Error rendering game {current_game_id}")
 
 
 def render():
@@ -492,7 +548,6 @@ def render():
     # Always show title to prevent blank screen
     st.title("Halftime Game 🏀")
     st.caption("Version: Prediction Game Mode")
-    st.error("🔴 IF YOU SEE THIS RED BOX, THE NEW CODE IS RUNNING!")
     st.markdown("---")
     
     try:
@@ -511,12 +566,10 @@ def render():
                 for err in st.session_state.error_log[-5:]:
                     st.text(err)
         
-        # Add a refresh button
-        if st.button("🔄 Refresh Dashboard"):
-            st.rerun()
+        # No refresh button needed - only showing completed games (no real-time updates)
 
 
 if __name__ == "__main__":
     render()
-    setup_refresh_timer(config.REFRESH_INTERVAL)
+    # No refresh timer needed - only showing completed games
 

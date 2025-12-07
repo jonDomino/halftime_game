@@ -1,8 +1,7 @@
 """Streamlit app entry point - thin wrapper"""
-from app.main import render, setup_refresh_timer
-from app.config import config
+from app.main import render
 
 # Main execution
 render()
-setup_refresh_timer(config.REFRESH_INTERVAL)
+# No refresh timer needed - only showing completed games
 

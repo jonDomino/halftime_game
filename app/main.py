@@ -305,43 +305,46 @@ def render_game(
         if prediction_made:
             st.warning("⚠️ Period 2 data not available for this completed game.")
     
-    # Always render full plot, but hide Period 2 with overlay if prediction not made
-    hide_overlay = not prediction_made and has_period_2
-    
-    # Try to load from cache first
-    cached_plot_path = load_plot_from_cache(game_id, overlay_hidden=hide_overlay)
-    residual_data = load_residual_data_from_cache(game_id)
-    
-    # If cached, display cached image (much faster)
-    if cached_plot_path:
-        from PIL import Image
-        img = Image.open(cached_plot_path)
-        st.image(img, use_container_width=True)
+    # Only show plot if prediction hasn't been made yet
+    if not prediction_made:
+        # Show plot with Period 2 hidden
+        hide_overlay = True
+        cached_plot_path = load_plot_from_cache(game_id, overlay_hidden=hide_overlay)
+        residual_data = load_residual_data_from_cache(game_id)
+        
+        # If cached, display cached image (much faster)
+        if cached_plot_path:
+            from PIL import Image
+            img = Image.open(cached_plot_path)
+            st.image(img, use_container_width=True)
+        else:
+            # If not cached, generate on-the-fly (fallback)
+            fig, residual_data = build_tempo_figure(
+                tfs_df, 
+                game_id, 
+                show_predictions=False, 
+                game_status=status,
+                closing_total=closing_total,
+                efg_first_half=efg_1h,
+                efg_second_half=efg_2h,
+                rotation_number=rotation_number,
+                lookahead_2h_total=lookahead_2h,
+                closing_spread_home=spread_home,
+                home_team_name=home_name,
+                show_period_2=True,  # Always show Period 2 in data
+                hide_period_2_overlay=True  # Hide with overlay
+            )
+            render_chart(fig)
     else:
-        # If not cached, generate on-the-fly (fallback)
-        fig, residual_data = build_tempo_figure(
-            tfs_df, 
-            game_id, 
-            show_predictions=False, 
-            game_status=status,
-            closing_total=closing_total,
-            efg_first_half=efg_1h,
-            efg_second_half=efg_2h,
-            rotation_number=rotation_number,
-            lookahead_2h_total=lookahead_2h,
-            closing_spread_home=spread_home,
-            home_team_name=home_name,
-            show_period_2=True,  # Always show Period 2 in data
-            hide_period_2_overlay=hide_overlay  # Hide with overlay if prediction not made
-        )
-        render_chart(fig)
+        # Prediction made - skip plot, just show result
+        residual_data = load_residual_data_from_cache(game_id)
     
-    # Calculate and display correctness after Period 2 is revealed (overlay removed)
+    # Calculate and display correctness immediately after prediction
     if prediction_made and has_period_2 and residual_data and not game_state.get('period_2_revealed', False):
         game_state['period_2_revealed'] = True
         calculate_and_update_correctness(game_id, residual_data)
     
-    # Show correctness feedback after Period 2 is revealed
+    # Show correctness feedback (text only, no plot)
     if game_state.get('prediction_made', False) and game_state.get('period_2_revealed', False):
         correctness = game_state.get('correctness')
         if correctness is not None and residual_data:
@@ -349,9 +352,9 @@ def render_game(
             actual_result = "slower" if median_residual_p2 > 0 else "faster"
             
             if correctness:
-                st.success(f"✅ Correct! Period 2 was {actual_result} than expected.")
+                st.success(f"✅ Correct! 2H went {actual_result}")
             else:
-                st.error(f"❌ Incorrect. Period 2 was {actual_result} than expected.")
+                st.error(f"❌ Incorrect. 2H went {actual_result}")
 
 
 def _render_content():
@@ -517,12 +520,12 @@ def _render_content():
             closing_2h_spread=closing_2h_s
         )
         
-        # Check if current game has prediction made and Period 2 revealed - if so, auto-advance to next
+        # Auto-advance to next game after showing result
         game_state = init_game_state(current_game_id)
         if (game_state.get('prediction_made', False) and 
             game_state.get('period_2_revealed', False) and 
             current_idx < len(board_filtered_game_ids) - 1):
-            # Move to next game immediately (user will see result on rerun)
+            # Advance immediately - result will show during rerun
             st.session_state.current_game_index += 1
             st.rerun()
     except Exception as e:

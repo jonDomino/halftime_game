@@ -43,6 +43,9 @@ cache/plots/*.pkl
 cache/plots/metadata.json
 # Note: PNG files (*.png) are committed to git for historical cache
 
+# Status cache (committed to git for speed - small file)
+# cache/game_statuses.json is committed to git
+
 # Logs
 *.log
 

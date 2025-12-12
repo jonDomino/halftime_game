@@ -203,6 +203,22 @@ def render():
             if is_correct:
                 st.session_state.score_tally['correct'] += 1
             
+            # Flash screen with color based on P2 result (faster = green, slower = red)
+            median_residual_p2 = residual_data.get('median_residual_p2', 0)
+            flash_color = "green" if median_residual_p2 < 0 else "red"  # < 0 = faster, > 0 = slower
+            
+            # Create flash overlay
+            flash_container = st.empty()
+            with flash_container.container():
+                st.markdown(
+                    f'<div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: {flash_color}; opacity: 0.15; z-index: 9999; pointer-events: none;"></div>',
+                    unsafe_allow_html=True
+                )
+            
+            # Flash for 100ms
+            time.sleep(0.1)
+            flash_container.empty()
+            
             # Show result
             actual_result_display = "slower" if actual_result == "slow" else "faster"
             if is_correct:

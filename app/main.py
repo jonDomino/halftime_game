@@ -207,17 +207,17 @@ def render():
             median_residual_p2 = residual_data.get('median_residual_p2', 0)
             flash_color = "green" if median_residual_p2 < 0 else "red"  # < 0 = faster, > 0 = slower
             
-            # Create flash overlay
-            flash_container = st.empty()
-            with flash_container.container():
-                st.markdown(
-                    f'<div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: {flash_color}; opacity: 0.15; z-index: 9999; pointer-events: none;"></div>',
-                    unsafe_allow_html=True
-                )
+            # Set flash state and timestamp
+            game_state['flash_active'] = True
+            game_state['flash_color'] = flash_color
+            game_state['flash_timestamp'] = time.time()
             
-            # Flash for 100ms
-            time.sleep(0.1)
-            flash_container.empty()
+            # Show flash overlay
+            st.markdown(
+                f'<div id="flash-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: {flash_color}; opacity: 0.15; z-index: 9999; pointer-events: none;"></div>'
+                f'<script>setTimeout(function(){{document.getElementById("flash-overlay").style.display="none";}}, 100);</script>',
+                unsafe_allow_html=True
+            )
             
             # Show result
             actual_result_display = "slower" if actual_result == "slow" else "faster"

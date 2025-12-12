@@ -7,6 +7,7 @@ import streamlit as st
 from pathlib import Path
 import pickle
 from PIL import Image
+import time
 
 
 # Constants
@@ -174,17 +175,69 @@ def render():
     # Show prediction buttons if not made
     if not game_state['prediction_made']:
         st.markdown("### Make your prediction:")
+        st.caption("💡 Use ← (left arrow) for Slow, → (right arrow) for Fast")
+        
+        # Add keyboard event listener for arrow keys
+        st.markdown(
+            '''
+            <script>
+                document.addEventListener('keydown', function(event) {
+                    if (event.key === 'ArrowLeft') {
+                        // Left arrow = Slow
+                        window.parent.postMessage({type: 'streamlit:setComponentValue', key: 'keyboard_slow', value: true}, '*');
+                    } else if (event.key === 'ArrowRight') {
+                        // Right arrow = Fast
+                        window.parent.postMessage({type: 'streamlit:setComponentValue', key: 'keyboard_fast', value: true}, '*');
+                    }
+                });
+            </script>
+            ''',
+            unsafe_allow_html=True
+        )
+        
+        # Check for keyboard input (using session state to track)
+        if 'keyboard_input' not in st.session_state:
+            st.session_state.keyboard_input = None
+        
+        # Use hidden buttons to trigger actions from keyboard
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("⚡ Fast", key=f"fast_{current_game_id}", use_container_width=True):
-                game_state['user_prediction'] = "fast"
-                game_state['prediction_made'] = True
-                st.rerun()
-        with col2:
             if st.button("🐌 Slow", key=f"slow_{current_game_id}", use_container_width=True):
                 game_state['user_prediction'] = "slow"
                 game_state['prediction_made'] = True
                 st.rerun()
+        with col2:
+            if st.button("⚡ Fast", key=f"fast_{current_game_id}", use_container_width=True):
+                game_state['user_prediction'] = "fast"
+                game_state['prediction_made'] = True
+                st.rerun()
+        
+        # Alternative: Use JavaScript to directly trigger button clicks
+        st.markdown(
+            f'''
+            <script>
+                (function() {{
+                    var fastButton = document.querySelector('button[data-testid*="fast_{current_game_id}"]');
+                    var slowButton = document.querySelector('button[data-testid*="slow_{current_game_id}"]');
+                    
+                    function handleKeyPress(event) {{
+                        if (event.key === 'ArrowLeft' && slowButton) {{
+                            event.preventDefault();
+                            slowButton.click();
+                        }} else if (event.key === 'ArrowRight' && fastButton) {{
+                            event.preventDefault();
+                            fastButton.click();
+                        }}
+                    }}
+                    
+                    // Remove existing listeners to avoid duplicates
+                    document.removeEventListener('keydown', handleKeyPress);
+                    document.addEventListener('keydown', handleKeyPress);
+                }})();
+            </script>
+            ''',
+            unsafe_allow_html=True
+        )
     else:
         # Prediction made - show result
         # Check if residual_data exists and has the required field

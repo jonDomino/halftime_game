@@ -11,9 +11,24 @@ The schedule loader fetches games from (today - 2 days) to (today + 3 days),
 so dates must be within that range.
 """
 import sys
+import os
+import warnings
+import logging
 from pathlib import Path
 from datetime import date
 import pandas as pd
+
+# Suppress Streamlit warnings when running outside Streamlit app context
+os.environ['STREAMLIT_LOGGER_LEVEL'] = 'error'
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', message='.*ScriptRunContext.*')
+warnings.filterwarnings('ignore', message='.*No runtime found.*')
+warnings.filterwarnings('ignore', message='.*missing ScriptRunContext.*')
+
+# Suppress Streamlit cache and runtime warnings
+logging.getLogger('streamlit.runtime.caching.cache_data_api').setLevel(logging.ERROR)
+logging.getLogger('streamlit.runtime.scriptrunner_utils').setLevel(logging.ERROR)
+logging.getLogger('streamlit.runtime.state').setLevel(logging.ERROR)
 
 # Ensure stderr is unbuffered
 sys.stderr.reconfigure(line_buffering=True) if hasattr(sys.stderr, 'reconfigure') else None
@@ -228,21 +243,26 @@ def main():
     
     print()
     
-    # Step 4: Generate plots for each game
-    print("Step 4: Generating plots...")
-    print(f"Processing {len(game_ids)} games...")
+    # Step 4: Filter games to only those with closing totals
+    print("Step 4: Filtering games with closing totals...")
+    games_with_totals = [gid for gid in game_ids if gid in closing_totals]
+    games_without_totals = len(game_ids) - len(games_with_totals)
+    
+    if games_without_totals > 0:
+        print(f"Skipping {games_without_totals} games without closing totals")
+    print(f"Processing {len(games_with_totals)} games with closing totals...")
     print()
     
     # Process all games (TEST_MODE disabled for full cache generation)
     TEST_MODE = False
     if TEST_MODE:
-        print(f"TEST MODE: Processing only first 20 games (out of {len(game_ids)})")
-        game_ids = game_ids[:20]
+        print(f"TEST MODE: Processing only first 20 games (out of {len(games_with_totals)})")
+        games_with_totals = games_with_totals[:20]
     
     successful = 0
     failed = 0
     
-    for idx, game_id in enumerate(game_ids, 1):
+    for idx, game_id in enumerate(games_with_totals, 1):
         print(f"[{idx}/{len(game_ids)}] Processing game {game_id}...", end=" ", flush=True)
         
         try:

@@ -756,48 +756,25 @@ def build_tempo_figure(
                 return default
             return val
         
-        # Overall row - reordered: Metric, P1 (Cnt, Mean, Med, Slow%, P-val), P2 (Cnt, Mean, Med, Slow%, P-val), Gm (Cnt, Mean, Med, Slow%, P-val)
+        # Overall row - ONLY Period 1 stats (hide P2 and Game-level to prevent cheating)
         table_data.append([
             "Overall",
             str(residual_data.get('total_poss_p1', 0)),
             f"{residual_data.get('avg_residual_p1', 0):+.1f}s" if residual_data.get('total_poss_p1', 0) > 0 else "-",
             f"{residual_data.get('median_residual_p1', 0):+.1f}s" if residual_data.get('total_poss_p1', 0) > 0 else "-",
             f"{residual_data.get('pct_above_p1', 0):.1f}%" if residual_data.get('total_poss_p1', 0) > 0 else "-",
-            f"{residual_data.get('p_value_p1', 0.5)*100:.1f}%" if residual_data.get('total_poss_p1', 0) > 0 else "-",
-            str(residual_data.get('total_poss_p2', 0)),
-            f"{residual_data.get('avg_residual_p2', 0):+.1f}s" if residual_data.get('total_poss_p2', 0) > 0 else "-",
-            f"{residual_data.get('median_residual_p2', 0):+.1f}s" if residual_data.get('total_poss_p2', 0) > 0 else "-",
-            f"{residual_data.get('pct_above_p2', 0):.1f}%" if residual_data.get('total_poss_p2', 0) > 0 else "-",
-            f"{residual_data.get('p_value_p2', 0.5)*100:.1f}%" if residual_data.get('total_poss_p2', 0) > 0 else "-",
-            str(residual_data.get('total_poss', 0)),
-            f"{residual_data.get('avg_residual', 0):+.1f}s",
-            f"{residual_data.get('median_residual', 0):+.1f}s",
-            f"{residual_data.get('pct_above', 0):.1f}%",
-            f"{residual_data.get('p_value', 0.5)*100:.1f}%"
+            f"{residual_data.get('p_value_p1', 0.5)*100:.1f}%" if residual_data.get('total_poss_p1', 0) > 0 else "-"
         ])
         
-        # Add possession type rows (Made Shot, Made FT, Rebound, Turnover)
+        # Add possession type rows (Made Shot, Made FT, Rebound, Turnover) - ONLY Period 1 stats
         for poss_type in ["oppo_made_shot", "oppo_made_ft", "rebound", "turnover"]:
             count_p1 = residual_data['count_by_type_p1'].get(poss_type, 0)
-            count_p2 = residual_data['count_by_type_p2'].get(poss_type, 0)
-            count_gm = residual_data['count_by_type'].get(poss_type, 0)
             
-            if count_gm > 0:  # Only add row if there's data
+            if count_p1 > 0:  # Only add row if there's Period 1 data
                 avg_p1 = residual_data['avg_by_type_p1'].get(poss_type, 0.0) if count_p1 > 0 else None
-                avg_p2 = residual_data['avg_by_type_p2'].get(poss_type, 0.0) if count_p2 > 0 else None
-                avg_gm = residual_data['avg_by_type'].get(poss_type, 0.0)
-                
                 median_p1 = residual_data['median_by_type_p1'].get(poss_type, 0.0) if count_p1 > 0 else None
-                median_p2 = residual_data['median_by_type_p2'].get(poss_type, 0.0) if count_p2 > 0 else None
-                median_gm = residual_data['median_by_type'].get(poss_type, 0.0)
-                
                 pct_p1 = residual_data['pct_above_by_type_p1'].get(poss_type, 0.0) if count_p1 > 0 else None
-                pct_p2 = residual_data['pct_above_by_type_p2'].get(poss_type, 0.0) if count_p2 > 0 else None
-                pct_gm = residual_data['pct_above_by_type'].get(poss_type, 0.0)
-                
                 p_val_p1 = residual_data.get('p_value_by_type_p1', {}).get(poss_type, 0.5) if count_p1 > 0 else None
-                p_val_p2 = residual_data.get('p_value_by_type_p2', {}).get(poss_type, 0.5) if count_p2 > 0 else None
-                p_val_gm = residual_data.get('p_value_by_type', {}).get(poss_type, 0.5)
                 
                 table_data.append([
                     type_labels_display[poss_type],
@@ -805,23 +782,11 @@ def build_tempo_figure(
                     f"{avg_p1:+.1f}s" if avg_p1 is not None else "-",
                     f"{median_p1:+.1f}s" if median_p1 is not None else "-",
                     f"{pct_p1:.1f}%" if pct_p1 is not None else "-",
-                    f"{p_val_p1*100:.1f}%" if p_val_p1 is not None else "-",
-                    str(count_p2),
-                    f"{avg_p2:+.1f}s" if avg_p2 is not None else "-",
-                    f"{median_p2:+.1f}s" if median_p2 is not None else "-",
-                    f"{pct_p2:.1f}%" if pct_p2 is not None else "-",
-                    f"{p_val_p2*100:.1f}%" if p_val_p2 is not None else "-",
-                    str(count_gm),
-                    f"{avg_gm:+.1f}s",
-                    f"{median_gm:+.1f}s",
-                    f"{pct_gm:.1f}%",
-                    f"{p_val_gm*100:.1f}%"
+                    f"{p_val_p1*100:.1f}%" if p_val_p1 is not None else "-"
                 ])
         
-        # Create table with 16 columns - ordered: Metric, then all P1, then all P2, then all Gm
-        col_labels = ["Metric", "P1 Cnt", "P1 Mean", "P1 Med", "P1 Slow%", "P1 P-val",
-                     "P2 Cnt", "P2 Mean", "P2 Med", "P2 Slow%", "P2 P-val",
-                     "Gm Cnt", "Gm Mean", "Gm Med", "Gm Slow%", "Gm P-val"]
+        # Create table with ONLY Period 1 columns (hide P2 and Game-level to prevent cheating)
+        col_labels = ["Metric", "P1 Cnt", "P1 Mean", "P1 Med", "P1 Slow%", "P1 P-val"]
         table = ax_residual.table(
             cellText=table_data,
             colLabels=col_labels,
@@ -840,72 +805,68 @@ def build_tempo_figure(
             table[(0, j)].set_facecolor('#4472C4')
             table[(0, j)].set_text_props(weight='bold', color='white')
         
-        # Color code data cells
+        # Color code data cells (only Period 1 columns: 0=Metric, 1=Cnt, 2=Mean, 3=Med, 4=Slow%, 5=P-val)
         for i, row in enumerate(table_data):
             row_idx = i + 1  # Data rows start at index 1 (after header)
-            # Color code Mean columns (indices 2, 6, 10) - P1 Mean, P2 Mean, Gm Mean
-            for col_idx in [2, 6, 10]:
-                if col_idx < len(row) and row[col_idx] != "-":
-                    try:
-                        val = float(row[col_idx].replace("s", ""))
-                        if val > 0:
-                            table[(row_idx, col_idx)].set_facecolor('#ffcccc')  # Light red
-                        else:
-                            table[(row_idx, col_idx)].set_facecolor('#ccffcc')  # Light green
-                    except:
-                        pass
-            
-            # Color code Median columns (indices 3, 7, 11) - P1 Med, P2 Med, Gm Med
-            for col_idx in [3, 7, 11]:
-                if col_idx < len(row) and row[col_idx] != "-":
-                    try:
-                        val = float(row[col_idx].replace("s", ""))
-                        if val > 0:
-                            table[(row_idx, col_idx)].set_facecolor('#ffcccc')  # Light red
-                        else:
-                            table[(row_idx, col_idx)].set_facecolor('#ccffcc')  # Light green
-                    except:
-                        pass
-            
-            # Color code % Slower columns (indices 4, 8, 12) - P1 Slow%, P2 Slow%, Gm Slow%
-            for col_idx in [4, 8, 12]:
-                if col_idx < len(row) and row[col_idx] != "-":
-                    try:
-                        val = float(row[col_idx].replace("%", ""))
-                        if val > 50:
-                            table[(row_idx, col_idx)].set_facecolor('#ffcccc')  # Light red
-                        else:
-                            table[(row_idx, col_idx)].set_facecolor('#ccffcc')  # Light green
-                    except:
-                        pass
             
             # Column 0: Metric column (light gray)
             table[(row_idx, 0)].set_facecolor('#F0F0F0')
             
-            # Color code P-value columns (indices 5, 10, 15) - P1 P-val, P2 P-val, Gm P-val
-            # Higher numbers = likely slow (red), lower numbers = likely fast (green)
-            for col_idx in [5, 10, 15]:
-                if col_idx < len(row) and row[col_idx] != "-":
-                    try:
-                        p_val_text = row[col_idx]
-                        if "%" in p_val_text:
-                            p_val = float(p_val_text.replace("%", "")) / 100.0
-                            if p_val > 0.8:
-                                # High p-value = likely slow - red shading
-                                table[(row_idx, col_idx)].set_facecolor('#FFE6E6')  # Light red
-                            elif p_val < 0.2:
-                                # Low p-value = likely fast - green shading
-                                table[(row_idx, col_idx)].set_facecolor('#E6FFE6')  # Light green
-                            else:
-                                table[(row_idx, col_idx)].set_facecolor('white')
-                        else:
-                            table[(row_idx, col_idx)].set_facecolor('white')
-                    except (ValueError, IndexError):
-                        table[(row_idx, col_idx)].set_facecolor('white')
+            # Column 1: P1 Count - white background
+            if len(row) > 1:
+                table[(row_idx, 1)].set_facecolor('#FFFFFF')
             
-            # Count columns (1, 6, 11) - P1 Cnt, P2 Cnt, Gm Cnt - white background
-            for col_idx in [1, 6, 11]:
-                table[(row_idx, col_idx)].set_facecolor('#FFFFFF')
+            # Column 2: P1 Mean - color code (red if > 0, green if < 0)
+            if len(row) > 2 and row[2] != "-":
+                try:
+                    val = float(row[2].replace("s", "").replace("+", ""))
+                    if val > 0:
+                        table[(row_idx, 2)].set_facecolor('#ffcccc')  # Light red
+                    else:
+                        table[(row_idx, 2)].set_facecolor('#ccffcc')  # Light green
+                except:
+                    pass
+            
+            # Column 3: P1 Median - color code (red if > 0, green if < 0)
+            if len(row) > 3 and row[3] != "-":
+                try:
+                    val = float(row[3].replace("s", "").replace("+", ""))
+                    if val > 0:
+                        table[(row_idx, 3)].set_facecolor('#ffcccc')  # Light red
+                    else:
+                        table[(row_idx, 3)].set_facecolor('#ccffcc')  # Light green
+                except:
+                    pass
+            
+            # Column 4: P1 Slow% - color code (red if > 50%, green if < 50%)
+            if len(row) > 4 and row[4] != "-":
+                try:
+                    val = float(row[4].replace("%", ""))
+                    if val > 50:
+                        table[(row_idx, 4)].set_facecolor('#ffcccc')  # Light red
+                    else:
+                        table[(row_idx, 4)].set_facecolor('#ccffcc')  # Light green
+                except:
+                    pass
+            
+            # Column 5: P1 P-val - color code (red if > 0.8, green if < 0.2)
+            if len(row) > 5 and row[5] != "-":
+                try:
+                    p_val_text = row[5]
+                    if "%" in p_val_text:
+                        p_val = float(p_val_text.replace("%", "")) / 100.0
+                        if p_val > 0.8:
+                            # High p-value = likely slow - red shading
+                            table[(row_idx, 5)].set_facecolor('#FFE6E6')  # Light red
+                        elif p_val < 0.2:
+                            # Low p-value = likely fast - green shading
+                            table[(row_idx, 5)].set_facecolor('#E6FFE6')  # Light green
+                        else:
+                            table[(row_idx, 5)].set_facecolor('white')
+                    else:
+                        table[(row_idx, 5)].set_facecolor('white')
+                except (ValueError, IndexError):
+                    table[(row_idx, 5)].set_facecolor('white')
         
         # Remove axes for table
         ax_residual.axis('off')

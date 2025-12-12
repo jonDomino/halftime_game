@@ -130,3 +130,4 @@ python scripts/commit_cache.py
 - Cache grows over time but remains fast (disk I/O is quick)
 - Git history preserves plot evolution over time
 
+

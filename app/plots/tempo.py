@@ -1,4 +1,5 @@
 """Tempo visualization plot"""
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -188,13 +189,13 @@ def build_tempo_figure(
     closing_2h_total: Optional[float] = None,
     opening_2h_spread: Optional[float] = None,
     closing_2h_spread: Optional[float] = None,
-    show_period_2: bool = True,
+    show_period_2: bool = False,
     hide_period_2_overlay: bool = False
 ) -> Tuple[plt.Figure, Optional[Dict]]:
     """Build tempo visualization figure.
     
     Args:
-        tfs_df: TFS DataFrame
+        tfs_df: TFS DataFrame (full game data - Period 1 + Period 2)
         game_id: Game identifier
         show_predictions: Whether to show predicted TFS
         game_status: Game status string
@@ -210,15 +211,25 @@ def build_tempo_figure(
         closing_2h_total: Closing 2H total (optional)
         opening_2h_spread: Opening 2H spread (optional)
         closing_2h_spread: Closing 2H spread (optional)
-        show_period_2: Whether to show Period 2 data (default: True). Always renders Period 2, but may hide with overlay.
-        hide_period_2_overlay: If True, adds a black overlay to hide Period 2 region (default: False).
+        show_period_2: Whether to show Period 2 data (default: False - only show Period 1)
+        hide_period_2_overlay: DEPRECATED - no longer used (kept for compatibility)
         
     Returns:
         Tuple of (Matplotlib figure, residual_data dictionary or None)
+        Note: residual_data includes full game stats (P1 + P2) even if plot shows only P1
     """
-    # Always use full data (Period 1 + Period 2) - overlay will hide Period 2 if needed
-    # Store original full dataframe for overlay calculation
+    # Store full dataframe for residual calculations (need P2 stats for correctness)
     full_tfs_df = tfs_df.copy()
+    
+    # Filter to Period 1 only for display
+    if "period_number" in full_tfs_df.columns:
+        display_tfs_df = full_tfs_df[full_tfs_df["period_number"] == 1].copy()
+    else:
+        display_tfs_df = full_tfs_df.copy()
+    
+    # Validate that we have Period 1 data
+    if len(display_tfs_df) == 0:
+        raise ValueError(f"No Period 1 data found for game {game_id}. Cannot generate plot.")
     
     # Remove team names - just show game ID
     header = f"Game {game_id}"
@@ -227,26 +238,28 @@ def build_tempo_figure(
     if game_status:
         header = f"{header} [{game_status}]"
     
-    # Use full data (always include Period 2)
-    x = full_tfs_df["chrono_index"].values.astype(float)
-    y = full_tfs_df["action_time"].values.astype(float)
+    # Use Period 1 data only for plotting
+    x = display_tfs_df["chrono_index"].values.astype(float)
+    y = display_tfs_df["action_time"].values.astype(float)
     
-    # Find where Period 2 starts (for overlay positioning)
-    period_2_start_x = None
-    if "period_number" in full_tfs_df.columns:
-        period_2_data = full_tfs_df[full_tfs_df["period_number"] == 2]
-        if len(period_2_data) > 0:
-            period_2_start_x = period_2_data["chrono_index"].min()
+    # Validate arrays are not empty
+    if len(x) == 0 or len(y) == 0:
+        raise ValueError(f"Empty Period 1 arrays for game {game_id}. x length: {len(x)}, y length: {len(y)}")
     
-    # Create smooth grid
-    grid = np.linspace(x.min(), x.max(), 200)
-    gx, gy = gaussian_kernel_smoother(x, y, bandwidth=5, grid=grid)
+    # Create smooth grid (only for Period 1)
+    if len(x) > 0:
+        grid = np.linspace(x.min(), x.max(), 200)
+        gx, gy = gaussian_kernel_smoother(x, y, bandwidth=5, grid=grid)
+    else:
+        grid = np.array([])
+        gx = np.array([])
+        gy = np.array([])
     
-    # Find change points
-    cps = find_change_points(y)
+    # Find change points (only for Period 1)
+    cps = find_change_points(y) if len(y) > 0 else []
     
-    # Get segment lines
-    segments = get_segment_lines(tfs_df)
+    # Get segment lines (only for Period 1)
+    segments = get_segment_lines(display_tfs_df)
     
     # Get style
     style = get_plot_style()
@@ -263,11 +276,19 @@ def build_tempo_figure(
                 score_diff = abs(float(max_away_score) - float(max_home_score))
     
     # Calculate residuals early if we have closing_total (needed for subplot)
-    # Use full dataframe for residual calculations
+    # Use full dataframe for residual calculations (includes Period 1 + Period 2)
+    # NOTE: If closing_total is None, we still return a figure but no residual_data
+    # This allows plots to be generated even without market data
     residual_data: Optional[Dict] = None
     if closing_total is not None and len(full_tfs_df) > 0:
         try:
             from app.data.bigquery_loader import calculate_expected_tfs
+            
+            # Verify Period 2 data exists in full_tfs_df
+            if "period_number" in full_tfs_df.columns:
+                period_2_data = full_tfs_df[full_tfs_df["period_number"] >= 2]
+                if len(period_2_data) == 0:
+                    print(f"WARNING: No Period 2 data found in full_tfs_df for game {game_id}. Cannot calculate P2 residual stats.", file=sys.stderr, flush=True)
             
             # Calculate residuals for each possession, tracking by period and type
             residuals = []
@@ -355,10 +376,17 @@ def build_tempo_figure(
             pct_above_p1 = (above_exp_count_p1 / total_poss_p1 * 100) if total_poss_p1 > 0 else 0.0
             
             # Calculate Period 2 statistics
+            # CRITICAL: median_residual_p2 is used to determine if user prediction was correct
+            # median_residual_p2 > 0 means P2 was SLOWER than expected (user should predict "slow")
+            # median_residual_p2 < 0 means P2 was FASTER than expected (user should predict "fast")
             avg_residual_p2 = np.mean(residuals_p2) if residuals_p2 else 0.0
             median_residual_p2 = np.median(residuals_p2) if residuals_p2 else 0.0
             total_poss_p2 = len(residuals_p2)
             pct_above_p2 = (above_exp_count_p2 / total_poss_p2 * 100) if total_poss_p2 > 0 else 0.0
+            
+            # Validate that we have Period 2 data for correctness calculation
+            if total_poss_p2 == 0:
+                print(f"WARNING: No Period 2 residual data calculated for game {game_id}. Cannot determine correctness.", file=sys.stderr, flush=True)
             
             # Calculate statistics by type for Period 1
             avg_by_type_p1 = {}
@@ -493,7 +521,8 @@ def build_tempo_figure(
         poss_start_types = ["rebound", "turnover", "oppo_made_shot", "oppo_made_ft", None]
         
         for poss_type in poss_start_types:
-            mask = full_tfs_df["poss_start_type"] == poss_type
+            # Use display_tfs_df (Period 1 only) for mask to match x and y arrays
+            mask = display_tfs_df["poss_start_type"] == poss_type
             if mask.any():
                 ax.scatter(
                     x[mask],
@@ -563,32 +592,30 @@ def build_tempo_figure(
         )
     
     # Calculate and plot possession-level expected TFS trend
+    # Use Period 1 data only for display (matches x and y arrays)
     exp_gx, exp_gy = None, None
-    if closing_total is not None and len(full_tfs_df) > 0:
+    if closing_total is not None and len(display_tfs_df) > 0:
         try:
-            # Calculate expected TFS for each possession based on its poss_start_type and period
-            # Make sure we iterate in the same order as the DataFrame (which matches chrono_index)
+            # Calculate expected TFS for each possession in Period 1 only
+            # Make sure we iterate in the same order as display_tfs_df (which matches x and y)
             exp_tfs_values = []
-            for idx in range(len(full_tfs_df)):
+            for idx in range(len(display_tfs_df)):
                 poss_type = None
-                period_num = None
-                if "poss_start_type" in full_tfs_df.columns:
-                    poss_type_val = full_tfs_df.iloc[idx]["poss_start_type"]
+                period_num = 1  # Always Period 1 for display
+                if "poss_start_type" in display_tfs_df.columns:
+                    poss_type_val = display_tfs_df.iloc[idx]["poss_start_type"]
                     # Handle NaN/None values
                     if pd.notna(poss_type_val) and poss_type_val is not None:
                         poss_type = str(poss_type_val).lower()
-                if "period_number" in full_tfs_df.columns:
-                    period_num_val = full_tfs_df.iloc[idx]["period_number"]
-                    if pd.notna(period_num_val):
-                        period_num = int(period_num_val)
+                # Use Period 1 score_diff (calculated earlier)
                 exp_tfs = calculate_expected_tfs(float(closing_total), poss_type, period_num, score_diff)
                 exp_tfs_values.append(exp_tfs)
             
             exp_tfs_array = np.array(exp_tfs_values)
             
             # Smooth the expected TFS trend using the same kernel smoother
-            # Use the same grid points as the kernel curve
-            if len(exp_tfs_array) > 0:
+            # Use the same grid points as the kernel curve (Period 1 only)
+            if len(exp_tfs_array) > 0 and len(x) > 0:
                 exp_gx, exp_gy = gaussian_kernel_smoother(x, exp_tfs_array, bandwidth=5, grid=grid)
         except Exception as e:
             # If there's an error, fall back to old behavior
@@ -991,37 +1018,7 @@ def build_tempo_figure(
                 transform=fig.transFigure
             )
     
-    # Add black overlay to hide Period 2 if requested
-    if hide_period_2_overlay and period_2_start_x is not None:
-        # Get axis limits to determine overlay bounds
-        y_min, y_max = ax.get_ylim()
-        x_max = ax.get_xlim()[1]
-        
-        # Add black rectangle covering Period 2 region
-        from matplotlib.patches import Rectangle
-        overlay = Rectangle(
-            (period_2_start_x, y_min),
-            x_max - period_2_start_x,
-            y_max - y_min,
-            facecolor='black',
-            edgecolor='black',
-            alpha=1.0,
-            zorder=1000  # High zorder to be on top
-        )
-        ax.add_patch(overlay)
-        
-        # Also add text on overlay
-        ax.text(
-            (period_2_start_x + x_max) / 2,
-            (y_min + y_max) / 2,
-            'Period 2\n(Hidden)',
-            ha='center',
-            va='center',
-            fontsize=16,
-            color='white',
-            weight='bold',
-            zorder=1001
-        )
+    # No overlay needed - plot only shows Period 1 data
     
     fig.tight_layout()
     return fig, residual_data

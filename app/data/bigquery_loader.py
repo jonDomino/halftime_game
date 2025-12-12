@@ -119,25 +119,25 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
         game_ids_str = ",".join([f"'{gid}'" for gid in game_ids])
         
         query = f"""
-        WITH last_two_days_pg AS (
+        WITH games_after_11_1_pg AS (
           SELECT *
           FROM `meatloaf-427522.markets.pregame`
           WHERE book IN ('Unabated', 'Bookmaker')
-            AND DATE(modifiedOn) >= DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY)
+            AND DATE(modifiedOn) >= DATE('2025-11-01')
         ),
         
-        last_two_days_1h AS (
+        games_after_11_1_1h AS (
           SELECT *
           FROM `meatloaf-427522.markets.first_half`
           WHERE book IN ('Unabated', 'Bookmaker')
-            AND DATE(modifiedOn) >= DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY)
+            AND DATE(modifiedOn) >= DATE('2025-11-01')
         ),
         
-        last_two_days_2h AS (
+        games_after_11_1_2h AS (
           SELECT *
           FROM `meatloaf-427522.markets.second_half`
           WHERE book IN ('Circa', 'Bookmaker', 'Buckeye')
-            AND DATE(modifiedOn) >= DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY)
+            AND DATE(modifiedOn) >= DATE('2025-11-01')
         ),
         
         -- ============================================================
@@ -153,7 +153,7 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
               PARTITION BY eventId, book
               ORDER BY modifiedOn DESC
             ) AS rn
-          FROM last_two_days_pg
+          FROM games_after_11_1_pg
           WHERE betType = 3
             AND market = 'total'
         ),
@@ -183,7 +183,7 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
               PARTITION BY eventId, book
               ORDER BY modifiedOn DESC
             ) AS rn
-          FROM last_two_days_1h
+          FROM games_after_11_1_1h
           WHERE betType = 3
             AND market = 'total'
         ),
@@ -213,7 +213,7 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
               PARTITION BY eventId, book
               ORDER BY modifiedOn DESC
             ) AS rn
-          FROM last_two_days_pg
+          FROM games_after_11_1_pg
           WHERE betType = 2
             AND market = 'spread'
             AND side = 'si1'     -- home POV
@@ -248,7 +248,7 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
               PARTITION BY eventId, book
               ORDER BY modifiedOn DESC
             ) AS rn_close
-          FROM last_two_days_2h
+          FROM games_after_11_1_2h
           WHERE betType = 3 AND market = 'total'
         ),
         
@@ -288,7 +288,7 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
               PARTITION BY eventId, book
               ORDER BY modifiedOn DESC
             ) AS rn_close
-          FROM last_two_days_2h
+          FROM games_after_11_1_2h
           WHERE betType = 2 AND market = 'spread' AND side = 'si1'
         ),
         
@@ -322,7 +322,7 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
             homeTeamName,
             away_rotationNumber,
             home_rotationNumber
-          FROM last_two_days_pg
+          FROM games_after_11_1_pg
           WHERE book = 'Unabated'
           GROUP BY 1,2,3,4,5,6
         )

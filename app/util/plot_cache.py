@@ -67,14 +67,12 @@ def get_missing_plots(game_ids: List[str]) -> List[str]:
         game_ids: List of game IDs to check
         
     Returns:
-        List of game IDs that are missing plots (either version)
+        List of game IDs that are missing plots
     """
     missing = []
     for game_id in game_ids:
-        hidden_path = get_plot_cache_path(game_id, overlay_hidden=True)
-        visible_path = get_plot_cache_path(game_id, overlay_hidden=False)
-        # Missing if either version doesn't exist
-        if not hidden_path.exists() or not visible_path.exists():
+        plot_path = get_plot_cache_path(game_id)
+        if not plot_path.exists():
             missing.append(game_id)
     return missing
 
@@ -88,16 +86,14 @@ def get_all_cached_game_ids() -> List[str]:
     ensure_cache_dir()
     game_ids = set()
     
-    # Find all PNG files
+    # Find all PNG files (excluding residual data files)
     for png_file in CACHE_DIR.glob('*.png'):
-        # Extract game_id from filename (format: {game_id}_hidden.png or {game_id}_visible.png)
+        # Skip residual data files
+        if png_file.name.endswith('_residuals.png'):
+            continue
+        # Extract game_id from filename (format: {game_id}.png)
         name = png_file.stem  # Gets filename without extension
-        if name.endswith('_hidden'):
-            game_id = name[:-7]  # Remove '_hidden' suffix
-            game_ids.add(game_id)
-        elif name.endswith('_visible'):
-            game_id = name[:-8]  # Remove '_visible' suffix
-            game_ids.add(game_id)
+        game_ids.add(name)
     
     return sorted(list(game_ids))
 
@@ -144,8 +140,8 @@ def commit_cache_to_git(dev_mode: bool = True) -> bool:
         
         # In dev mode, always commit
         if dev_mode:
-            # Add all PNG files in cache directory (use individual files for Windows compatibility)
-            png_files = list(CACHE_DIR.glob('*.png'))
+            # Add all PNG files in cache directory (exclude residual data files)
+            png_files = [f for f in CACHE_DIR.glob('*.png') if not f.name.endswith('_residuals.png')]
             if png_files:
                 # Add all PNG files
                 for png_file in png_files:
@@ -193,45 +189,41 @@ def commit_cache_to_git(dev_mode: bool = True) -> bool:
         return False
 
 
-def get_plot_cache_path(game_id: str, overlay_hidden: bool) -> Path:
+def get_plot_cache_path(game_id: str) -> Path:
     """Get cache file path for a plot.
     
     Args:
         game_id: Game identifier
-        overlay_hidden: Whether Period 2 overlay is hidden (True) or visible (False)
         
     Returns:
         Path to cached plot file
     """
-    suffix = "_hidden" if overlay_hidden else "_visible"
-    return CACHE_DIR / f"{game_id}{suffix}.png"
+    return CACHE_DIR / f"{game_id}.png"
 
 
-def save_plot_to_cache(fig: plt.Figure, game_id: str, overlay_hidden: bool):
+def save_plot_to_cache(fig: plt.Figure, game_id: str):
     """Save a plot figure to cache.
     
     Args:
         fig: Matplotlib figure
         game_id: Game identifier
-        overlay_hidden: Whether Period 2 overlay is hidden
     """
     ensure_cache_dir()
-    cache_path = get_plot_cache_path(game_id, overlay_hidden)
+    cache_path = get_plot_cache_path(game_id)
     fig.savefig(cache_path, dpi=100, bbox_inches='tight', format='png')
     plt.close(fig)  # Close figure to free memory
 
 
-def load_plot_from_cache(game_id: str, overlay_hidden: bool) -> Optional[str]:
+def load_plot_from_cache(game_id: str) -> Optional[str]:
     """Load a plot from cache.
     
     Args:
         game_id: Game identifier
-        overlay_hidden: Whether Period 2 overlay is hidden
         
     Returns:
         Path to cached plot file (as string) or None if not cached
     """
-    cache_path = get_plot_cache_path(game_id, overlay_hidden)
+    cache_path = get_plot_cache_path(game_id)
     if cache_path.exists():
         return str(cache_path)
     return None
@@ -273,8 +265,7 @@ def generate_plot_for_game(
     opening_2h_total: Optional[float] = None,
     closing_2h_total: Optional[float] = None,
     opening_2h_spread: Optional[float] = None,
-    closing_2h_spread: Optional[float] = None,
-    overlay_hidden: bool = True
+    closing_2h_spread: Optional[float] = None
 ) -> Tuple[Optional[plt.Figure], Optional[Dict]]:
     """Generate plot for a single game.
     
@@ -289,10 +280,10 @@ def generate_plot_for_game(
         closing_2h_total: Closing 2H total
         opening_2h_spread: Opening 2H spread
         closing_2h_spread: Closing 2H spread
-        overlay_hidden: Whether to hide Period 2 with overlay
         
     Returns:
         Tuple of (figure, residual_data)
+        Note: Plot shows only Period 1, but residual_data includes full game stats
     """
     try:
         # Load and process game data
@@ -322,15 +313,21 @@ def generate_plot_for_game(
             closing_2h_total=closing_2h_total,
             opening_2h_spread=opening_2h_spread,
             closing_2h_spread=closing_2h_spread,
-            show_period_2=True,
-            hide_period_2_overlay=overlay_hidden
+            show_period_2=False  # Only show Period 1
         )
         
         return fig, residual_data
     except Exception as e:
-        print(f"Error generating plot for game {game_id}: {e}")
+        # Force flush to ensure error messages appear
+        import sys
+        error_msg = f"Error generating plot for game {game_id}: {e}"
+        print(error_msg, file=sys.stderr, flush=True)
         import traceback
-        print(traceback.format_exc())
+        tb = traceback.format_exc()
+        print(tb, file=sys.stderr, flush=True)
+        # Also print to stdout for visibility
+        print(error_msg, flush=True)
+        print(tb, flush=True)
         return None, None
 
 
@@ -382,57 +379,46 @@ def pregenerate_plots_for_games(
         if progress_callback:
             progress_callback(game_id, idx + 1, total)
         
-        # Generate both versions (with and without overlay)
-        for overlay_hidden in [True, False]:
-            cache_path = get_plot_cache_path(game_id, overlay_hidden)
-            
-            # Skip if already cached (incremental mode)
-            if incremental and cache_path.exists():
-                cached_count += 1
-                continue
-            
-            # Generate plot
-            fig, residual_data = generate_plot_for_game(
-                game_id,
-                closing_total=closing_totals.get(game_id),
-                rotation_number=rotation_numbers.get(game_id),
-                lookahead_2h_total=lookahead_2h_totals.get(game_id),
-                closing_spread_home=closing_spread_home.get(game_id),
-                home_team_name=home_team_names.get(game_id),
-                opening_2h_total=opening_2h_totals.get(game_id),
-                closing_2h_total=closing_2h_totals.get(game_id),
-                opening_2h_spread=opening_2h_spreads.get(game_id),
-                closing_2h_spread=closing_2h_spreads.get(game_id),
-                overlay_hidden=overlay_hidden
-            )
-            
-            if fig is not None:
-                save_plot_to_cache(fig, game_id, overlay_hidden)
-                generated_count += 1
-                
-                # Save residual data (only once, doesn't depend on overlay)
-                if overlay_hidden and residual_data:
-                    save_residual_data_to_cache(residual_data, game_id)
+        # Generate plot (Period 1 only)
+        cache_path = get_plot_cache_path(game_id)
         
-        # Save residual data if we have it
-        residual_data = load_residual_data_from_cache(game_id)
-        if residual_data is None:
-            # Try to get it from the last generation
-            fig, residual_data = generate_plot_for_game(
-                game_id,
-                closing_total=closing_totals.get(game_id),
-                rotation_number=rotation_numbers.get(game_id),
-                lookahead_2h_total=lookahead_2h_totals.get(game_id),
-                closing_spread_home=closing_spread_home.get(game_id),
-                home_team_name=home_team_names.get(game_id),
-                opening_2h_total=opening_2h_totals.get(game_id),
-                closing_2h_total=closing_2h_totals.get(game_id),
-                opening_2h_spread=opening_2h_spreads.get(game_id),
-                closing_2h_spread=closing_2h_spreads.get(game_id),
-                overlay_hidden=True
-            )
+        # Skip if already cached (incremental mode)
+        if incremental and cache_path.exists():
+            cached_count += 1
+            # Still need to check for residual data
+            residual_path = get_residual_data_cache_path(game_id)
+            if not residual_path.exists():
+                # Need to generate to get residual data
+                pass
+            else:
+                continue
+        
+        # Generate plot
+        fig, residual_data = generate_plot_for_game(
+            game_id,
+            closing_total=closing_totals.get(game_id),
+            rotation_number=rotation_numbers.get(game_id),
+            lookahead_2h_total=lookahead_2h_totals.get(game_id),
+            closing_spread_home=closing_spread_home.get(game_id),
+            home_team_name=home_team_names.get(game_id),
+            opening_2h_total=opening_2h_totals.get(game_id),
+            closing_2h_total=closing_2h_totals.get(game_id),
+            opening_2h_spread=opening_2h_spreads.get(game_id),
+            closing_2h_spread=closing_2h_spreads.get(game_id)
+        )
+        
+        if fig is not None:
+            save_plot_to_cache(fig, game_id)
+            generated_count += 1
+            
+            # Save residual data (includes full game stats for correctness calculation)
             if residual_data:
                 save_residual_data_to_cache(residual_data, game_id)
+        
+        # Residual data should already be saved above, but check if missing
+        residual_path = get_residual_data_cache_path(game_id)
+        if not residual_path.exists() and residual_data:
+            save_residual_data_to_cache(residual_data, game_id)
     
     # Update metadata
     metadata = {

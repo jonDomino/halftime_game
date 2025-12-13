@@ -2,16 +2,23 @@
 import json
 import os
 import pandas as pd
-import streamlit as st
+from pathlib import Path
 from datetime import datetime, time
 from google.cloud import bigquery
 from typing import Dict, Optional, Tuple
 from app.config import config
 
+# Optional Streamlit import (for when running in Streamlit context)
+try:
+    import streamlit as st
+    HAS_STREAMLIT = True
+except ImportError:
+    HAS_STREAMLIT = False
+    st = None
+
 try:
     from streamlit.errors import StreamlitSecretNotFoundError
 except ImportError:
-    # Fallback for older Streamlit versions
     StreamlitSecretNotFoundError = Exception
 
 
@@ -35,7 +42,7 @@ def should_run_query() -> bool:
     return True
 
 
-@st.cache_data(ttl=config.CACHE_TTL_CLOSING_TOTALS)  # Cache for configured duration (closing totals don't change often)
+# Removed @st.cache_data decorator - caching handled by generate_cache.py script
 def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, Optional[int], Optional[float], Optional[float], Optional[float], Optional[str], Optional[float], Optional[float], Optional[float], Optional[float]]]:
     """Internal function to fetch closing totals from BigQuery.
     
@@ -52,8 +59,8 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
     creds_path = None
     client = None
     
-    # Method 1: Check Streamlit secrets (for Streamlit Cloud)
-    if hasattr(st, 'secrets'):
+    # Method 1: Check Streamlit secrets (for Streamlit Cloud) - only if Streamlit is available
+    if HAS_STREAMLIT and st is not None and hasattr(st, 'secrets'):
         try:
             # Try to access secrets - this will raise StreamlitSecretNotFoundError if no secrets file exists
             if 'bq_credentials' in st.secrets:
@@ -72,8 +79,8 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
                     creds_path = f.name
                 
                 client = bigquery.Client.from_service_account_json(creds_path)
-        except StreamlitSecretNotFoundError:
-            # No secrets.toml file exists locally - fall through to next method
+        except (StreamlitSecretNotFoundError, AttributeError):
+            # No secrets.toml file exists locally or Streamlit not properly initialized - fall through to next method
             pass
         except (KeyError, AttributeError):
             # bq_credentials not in secrets - fall through to next method

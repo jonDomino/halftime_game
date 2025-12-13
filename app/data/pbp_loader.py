@@ -1,16 +1,17 @@
-"""Play-by-play data loading with caching and throttling"""
+"""Play-by-play data loading"""
 import pandas as pd
-import streamlit as st
 from .get_pbp import get_pbp
-from app.config import config
 
 
-@st.cache_data(ttl=config.CACHE_TTL_PBP)  # Cache for configured duration
-def load_pbp_cached(game_id: str) -> pd.DataFrame:
-    """Load play-by-play data with caching.
+def load_pbp(game_id: str, use_cache: bool = True) -> pd.DataFrame:
+    """Load play-by-play data.
+    
+    Note: Caching is handled by the cache generation script.
+    This function always fetches fresh data from the API.
     
     Args:
         game_id: Game identifier as string
+        use_cache: Ignored (kept for API compatibility, but caching handled externally)
         
     Returns:
         DataFrame with play-by-play data
@@ -22,23 +23,4 @@ def load_pbp_cached(game_id: str) -> pd.DataFrame:
     if raw is None or len(raw) == 0:
         raise ValueError("No play data found.")
     return raw
-
-
-def load_pbp(game_id: str, use_cache: bool = True) -> pd.DataFrame:
-    """Load play-by-play data.
-    
-    Args:
-        game_id: Game identifier as string
-        use_cache: Whether to use cached data (default: True)
-        
-    Returns:
-        DataFrame with play-by-play data
-    """
-    if use_cache:
-        return load_pbp_cached(game_id)
-    else:
-        raw = get_pbp(int(game_id))
-        if raw is None or len(raw) == 0:
-            raise ValueError("No play data found.")
-        return raw
 

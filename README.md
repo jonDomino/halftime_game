@@ -1,15 +1,14 @@
-# TFS Kernel Dashboard
+# Halftime Game 🏀
 
-Live dashboard for monitoring Time to First Shot (TFS) tempo in college basketball games.
+A Pygame-based desktop game where users view Period 1 tempo trends and predict whether Period 2 will play faster or slower than expected.
 
 ## Features
 
-- Real-time TFS tempo visualization with kernel smoothing
-- Game status filtering (Early 1H, First Half, Halftime, Second Half, Complete)
-- Board filtering (Main/Extra)
-- Expected TFS based on closing totals
-- CUSUM change-point detection
-- Parallel processing for efficient game scanning
+- Pre-generated tempo visualizations from cached plots
+- Interactive prediction game (Fast/Slow)
+- Score tracking across multiple games
+- Visual feedback with color-coded results
+- Auto-advance through games
 
 ## Setup
 
@@ -19,45 +18,87 @@ Live dashboard for monitoring Time to First Shot (TFS) tempo in college basketba
 pip install -r requirements.txt
 ```
 
-### 2. Configure Credentials
+### 2. Generate Cache Files
 
-Create a `meatloaf.json` file in the root directory with your BigQuery service account credentials. This file is excluded from git for security.
-
-### 3. Run the Dashboard
+Before running the game, you must generate cache files:
 
 ```bash
-streamlit run streamlit_app.py
+python scripts/generate_cache.py
+```
+
+This will create plot images and residual data files in `cache/plots/`.
+
+### 3. Run the Game
+
+```bash
+python run_game.py
 ```
 
 ## Project Structure
 
 ```
-dashboard/
+halftime_game/
+├── run_game.py              # Entry point (Pygame game)
 ├── app/
-│   ├── data/          # Data loading (schedule, PBP, BigQuery, status)
-│   ├── tfs/           # TFS computation and analysis
-│   ├── plots/         # Visualization modules
-│   ├── ui/            # UI components
-│   ├── util/           # Utilities (caching, time, style, kernel)
-│   └── main.py         # Main application entry point
-├── builders/           # Action time processing pipeline
-├── streamlit_app.py    # Streamlit entry point
-└── requirements.txt    # Python dependencies
+│   ├── game_pygame.py      # Game implementation
+│   ├── data/               # Data loading modules
+│   ├── tfs/                # TFS computation
+│   ├── plots/              # Plot generation
+│   └── util/               # Utilities
+├── scripts/
+│   ├── generate_cache.py   # Cache generation script
+│   └── analyze_p2_stats.py # Analysis script
+├── build_tfs/              # TFS processing pipeline
+└── cache/plots/            # Pre-generated cache files
 ```
 
-## Configuration
+## Requirements
 
-- **Refresh Interval**: 30 seconds
-- **BigQuery Query Window**: 8am - 10pm (uses cache outside these hours)
-- **Cache TTL**: 
-  - Game statuses: 30 seconds
-  - Closing totals: 1 hour
-  - PBP data: 60 seconds
+### Runtime (for `run_game.py`)
+- Python 3.8+
+- pygame >=2.5.0
+- Pillow >=9.0.0
+- numpy >=1.23.0
+
+### Cache Generation (for `scripts/generate_cache.py`)
+- All runtime dependencies plus:
+- pandas >=1.5.0
+- matplotlib >=3.6.0
+- requests >=2.28.0
+- google-cloud-bigquery >=3.11.0
+
+## Usage
+
+### Running the Game
+
+1. Ensure cache files exist in `cache/plots/`
+2. Run `python run_game.py`
+3. Use ←/→ arrow keys or mouse clicks to make predictions
+4. Press ESC to quit
+
+### Generating Cache
+
+1. Configure BigQuery credentials in `meatloaf.json`
+2. Run `python scripts/generate_cache.py`
+3. Cache files will be saved to `cache/plots/`
+
+### Analysis
+
+Run analysis on Period 2 statistics:
+
+```bash
+python scripts/analyze_p2_stats.py
+```
+
+## Documentation
+
+- `PYGAME_REQS.md` - Detailed requirements for `run_game.py` and `analyze_p2_stats.py`
+- `DEPENDENCY_REVIEW.md` - Dependency analysis and cleanup guide
+- `HALFTIME_GAME_SPEC.md` - Original game specification
 
 ## Notes
 
-- The dashboard automatically filters to games with closing totals
-- Completed games are never re-scanned
-- "Not Started" games are checked every 10 minutes
-- BigQuery queries are cached and only run during business hours (8am-10pm)
-
+- All plots must be pre-generated before running the game
+- Cache files are read-only during gameplay
+- Game loops through all cached games
+- Score resets when looping back to start

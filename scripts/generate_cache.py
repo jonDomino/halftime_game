@@ -18,17 +18,8 @@ from pathlib import Path
 from datetime import date
 import pandas as pd
 
-# Suppress Streamlit warnings when running outside Streamlit app context
-os.environ['STREAMLIT_LOGGER_LEVEL'] = 'error'
+# Suppress warnings when running outside app context
 warnings.filterwarnings('ignore', category=UserWarning)
-warnings.filterwarnings('ignore', message='.*ScriptRunContext.*')
-warnings.filterwarnings('ignore', message='.*No runtime found.*')
-warnings.filterwarnings('ignore', message='.*missing ScriptRunContext.*')
-
-# Suppress Streamlit cache and runtime warnings
-logging.getLogger('streamlit.runtime.caching.cache_data_api').setLevel(logging.ERROR)
-logging.getLogger('streamlit.runtime.scriptrunner_utils').setLevel(logging.ERROR)
-logging.getLogger('streamlit.runtime.state').setLevel(logging.ERROR)
 
 # Ensure stderr is unbuffered
 sys.stderr.reconfigure(line_buffering=True) if hasattr(sys.stderr, 'reconfigure') else None

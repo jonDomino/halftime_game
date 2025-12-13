@@ -8,18 +8,7 @@ from google.cloud import bigquery
 from typing import Dict, Optional, Tuple
 from app.config import config
 
-# Optional Streamlit import (for when running in Streamlit context)
-try:
-    import streamlit as st
-    HAS_STREAMLIT = True
-except ImportError:
-    HAS_STREAMLIT = False
-    st = None
-
-try:
-    from streamlit.errors import StreamlitSecretNotFoundError
-except ImportError:
-    StreamlitSecretNotFoundError = Exception
+# Streamlit no longer supported - removed all Streamlit code paths
 
 
 def should_run_query() -> bool:
@@ -59,62 +48,30 @@ def _get_closing_totals_internal(game_ids: list) -> Dict[str, Tuple[float, str, 
     creds_path = None
     client = None
     
-    # Method 1: Check Streamlit secrets (for Streamlit Cloud) - only if Streamlit is available
-    if HAS_STREAMLIT and st is not None and hasattr(st, 'secrets'):
-        try:
-            # Try to access secrets - this will raise StreamlitSecretNotFoundError if no secrets file exists
-            if 'bq_credentials' in st.secrets:
-                # Create temporary JSON file from secrets
-                import tempfile
-                import json as json_lib
-                
-                creds_dict = dict(st.secrets.bq_credentials)
-                # Handle JSON string if stored that way
-                if 'json_content' in creds_dict:
-                    creds_dict = json_lib.loads(creds_dict['json_content'])
-                
-                # Write to temp file
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                    json_lib.dump(creds_dict, f)
-                    creds_path = f.name
-                
-                client = bigquery.Client.from_service_account_json(creds_path)
-        except (StreamlitSecretNotFoundError, AttributeError):
-            # No secrets.toml file exists locally or Streamlit not properly initialized - fall through to next method
-            pass
-        except (KeyError, AttributeError):
-            # bq_credentials not in secrets - fall through to next method
-            pass
-        except Exception:
-            # Other errors accessing secrets - fall through to next method
-            pass
+    # Method 1: Check environment variable
+    env_creds_path = os.getenv("BIGQUERY_CREDENTIALS_PATH", None)
+    if env_creds_path and os.path.exists(env_creds_path):
+        creds_path = env_creds_path
     
-    # Method 2: Check environment variable or default location (if Method 1 didn't work)
-    if client is None:
-        # Method 2: Check environment variable
-        env_creds_path = os.getenv("BIGQUERY_CREDENTIALS_PATH", None)
-        if env_creds_path and os.path.exists(env_creds_path):
-            creds_path = env_creds_path
-        
-        # Method 3: Check default location
-        if not creds_path:
-            if os.path.exists("meatloaf.json"):
-                creds_path = "meatloaf.json"
-        
-        # Initialize BigQuery client
-        try:
-            if creds_path:
-                # Use service account JSON file
-                client = bigquery.Client.from_service_account_json(creds_path)
-            else:
-                # Try using Application Default Credentials (if gcloud is configured)
-                client = bigquery.Client()
-        except Exception as e:
-            # Log credential loading error for debugging
-            import traceback
-            print(f"ERROR: Failed to load BigQuery credentials: {e}")
-            print(traceback.format_exc())
-            return {}
+    # Method 2: Check default location
+    if not creds_path:
+        if os.path.exists("meatloaf.json"):
+            creds_path = "meatloaf.json"
+    
+    # Initialize BigQuery client
+    try:
+        if creds_path:
+            # Use service account JSON file
+            client = bigquery.Client.from_service_account_json(creds_path)
+        else:
+            # Try using Application Default Credentials (if gcloud is configured)
+            client = bigquery.Client()
+    except Exception as e:
+        # Log credential loading error for debugging
+        import traceback
+        print(f"ERROR: Failed to load BigQuery credentials: {e}")
+        print(traceback.format_exc())
+        return {}
     
     if client is None:
         print("ERROR: BigQuery client is None - credentials not loaded")
